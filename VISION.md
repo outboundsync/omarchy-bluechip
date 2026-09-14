@@ -52,12 +52,24 @@ Make Omarchy the **best place on earth to operate and troubleshoot a Salesforce 
 
 The admin at a sharp tech company opens Omarchy and sees: which org is hot, which Flow is bleeding, which integration is chewing API, which sandbox is stale — then asks an agent to investigate with full context already attached. Lightning Setup becomes the occasional deep link, not the home screen.
 
+## Revenue wedge (parked, 2026-09-14)
+
+**ICP assumption:** the Salesforce org is **already set up**. No “getting started with Salesforce” widget, no Trailhead-style onboarding chrome, no empty-org wizard. The user is a System Admin (or equivalent) who already runs the org.
+
+**Paid attach:** OutboundSync data hygiene / data audit capabilities — built as OutboundSync product, made available through this Omarchy plugin. Ambient “see the mess” on the admin desk; remediation that can route through OutboundSync (including the router / enrichment path) when they want to act at scale.
+
+**Not the SKU:** sandbox provisioning, Flow test infrastructure, and confirm-gated agents stay useful beachheads and dogfood; they are not the primary invoice line until proven.
+
+**Brand:** Bluechip remains the open Omarchy plugin name for now. Shipping furniture under an OutboundSync-facing label later is fine; do not confuse the MIT cockpit with the paid hygiene/router story.
+
 ## Explicit non-goals (for now)
 
 - Rebuilding Lightning Setup or Full DX IDE in QML
 - Competing with frontier agents as the AI itself
 - Full org data sync to the Linux filesystem
 - Seller-only CRM chrome as the headline (can layer later)
+- **Salesforce getting-started / empty-org onboarding** — assume the account exists; no Setup-for-beginners widget
+- Owning Salesforce admin training or Trailhead replacement
 
 ## Park rule
 
