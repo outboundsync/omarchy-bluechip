@@ -62,3 +62,40 @@ The admin at a sharp tech company opens Omarchy and sees: which org is hot, whic
 ## Park rule
 
 Shape and vision only until Harris unparks. No Connected App, no QML scaffold required to keep this document honest.
+
+## Grounded in Harris × Brutus pain (2026-08 → 2026-09)
+
+Real friction already felt — not hypothetical:
+
+1. **Flow HTTP Callout / Apex-defined types** — IN_/OUT_2XX class soup, async-path-only callouts, Text pickers hiding Apex objects, loops just to read `mobilePhone`, Debug-before-Activate ritual. Hardest click-path Harris hit; wanted one step at a time, not dual-path docs.
+2. **Named Credential + External Credential auth** — Custom header formulas (`Authorization={! $Credential…}`), Generate Authorization Header vs Allow Formulas traps; ZoomInfo client-credentials and later OutboundSync Router creds.
+3. **Org split brain** — patterns built in `outboundsyncinc-dev-ed` then re-done on live team EE; easy to debug the wrong org.
+4. **Salesforce MCP ceiling** — Cursor hosted MCP = SObject CRUD/SOQL only; **no Metadata / custom fields**. Fields and much Setup stayed click-coaching. Flex Credits / Event Log metering became its own project.
+5. **Integration user FLS / Perm Set traps** — SavvyCal fields needed Read+Edit on Integration PS via API after Setup miss; “probe MCP/org before inventing menus” became house rule.
+6. **Boundary debugging** — Cloudflare Worker + Salesforce (wrangler tail, Illegal invocation, webhook mapping) while SF side was Named Cred / Connected App / PS.
+
+### What Omarchy would need to make *that* work easier
+
+| Capability | Why (from pain) | Access / tooling required |
+| --- | --- | --- |
+| **Org pin + hard sandbox/prod chrome** | Stop debugging Dev Ed thinking it’s EE | Multiple org auth (JWT or browser OAuth); bar badge impossible to miss |
+| **Flow fault console** | Interview faults + element errors without Setup archaeology | Tooling API: `FlowInterview`, Flow definition; View Flows / Manage Flow |
+| **Apex-defined type explorer** | See IN_/OUT_2XX shapes the Callout generated | Tooling/Apex Class describe; or retrieve Flow + related Apex |
+| **One-click Trace Flag + log tail** | Debug-before-Activate without Log page hell | Tooling `TraceFlag`, `ApexLog`; local log stream |
+| **Named Cred / Ext Cred inspector** | “What header formula is live?” without leaking secrets | Metadata/Tooling read of NC/EC; secret values never shown — formula + status only |
+| **Perm Set / FLS matrix for integration users** | Catch missing Edit before smoke test | SOQL + Tooling FieldPermissions / ObjectPermissions; compare PS to required field list |
+| **API + Flex Credit pulse** | Hosted MCP burn; callout volume | Event Monitoring (`SALESFORCE_HOSTED_MCP`), Limits API, optional Digital Wallet read; local ledger |
+| **Agent context pack** | Cursor/Grok get “this org, this Flow, last fault, this NC” without paste | Local Bluechip MCP over Tooling/Metadata/SOQL — **beyond** sObject-only hosted MCP |
+| **Confirm-gated writes** | Deploy TraceFlag, FLS fix, Flow activate | Metadata/Tooling write scopes; always confirm; sandbox-first |
+
+### Access stack (required to be real)
+
+- **Connected App / External Client App** for Bluechip (separate from Cursor MCP): scopes for API, refresh; Admin-approved; Sysadmin-only to start  
+- **User perms:** API Enabled, View Setup, Manage Flow / View All Data as needed, View Event Log Files (for MCP/Flex forensics), Modify Metadata if deploy features ship  
+- **APIs:** REST + **Tooling** + **Metadata** (hosted SObject MCP is not enough — that was the Brutus ceiling)  
+- **Local:** `sf` CLI optional for DX parity; Bluechip should not require VS Code  
+- **Hard rule:** never store Consumer Secret in the plugin settings UI (Enricherino `~/.config` 0600 pattern)
+
+### Agent leverage on this desk
+
+Agent does not replace Brutus/Harris judgment. It gets a **pre-attached incident bundle** (org id, Flow API name, interview Id, fault message, NC API name, recent ApexLog Ids) and proposes the next Setup click or a Metadata diff — human confirms. That is exactly the gap when MCP could SOQL but couldn’t see why a callout type was wrong.
