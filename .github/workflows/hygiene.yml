@@ -27,3 +27,7 @@ jobs:
         run: |
           chmod +x tests/test-ux-pass.sh bin/bluechip-scratchpad
           ./tests/test-ux-pass.sh
+      - name: HANCORE hardening (caps, cache, clipboard, PATH)
+        run: |
+          chmod +x tests/test-hardening.sh
+          ./tests/test-hardening.sh

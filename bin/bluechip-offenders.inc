@@ -96,21 +96,24 @@ _offenders_rank_csv() {
     return 0
   fi
   tmp="$(mktemp "${TMPDIR:-/tmp}/bluechip-elf.XXXXXX")"
-  printf '%s' "$csv" > "$tmp"
   chmod 600 "$tmp" 2>/dev/null || true
-  OFFENDERS_MAX_ROWS="$OFFENDERS_MAX_ROWS" python3 - "$since_epoch" "$tmp" <<'PY'
+  printf '%s' "$csv" > "$tmp"
+  OFFENDERS_MAX_ROWS="$OFFENDERS_MAX_ROWS" OFFENDERS_MAX_BYTES="$OFFENDERS_MAX_BYTES" python3 - "$since_epoch" "$tmp" <<'PY'
 import csv, io, json, os, sys
 since = int(sys.argv[1]) if len(sys.argv) > 1 and str(sys.argv[1]).isdigit() else 0
 path = sys.argv[2]
+max_bytes = int(os.environ.get("OFFENDERS_MAX_BYTES", "524288"))
+max_rows = int(os.environ.get("OFFENDERS_MAX_ROWS", "20000"))
 try:
     with open(path, encoding="utf-8", errors="replace") as fh:
-        raw = fh.read()
+        raw = fh.read(max_bytes + 1)
+    if len(raw) > max_bytes:
+        raw = raw[:max_bytes]
 finally:
     try:
         os.remove(path)
     except OSError:
         pass
-max_rows = int(os.environ.get("OFFENDERS_MAX_ROWS", "20000"))
 if not raw.strip():
     print(json.dumps({"ok": True, "reason": None, "byUser": [], "byClient": [], "byConnectedApp": [], "rows": 0, "truncated": False}))
     raise SystemExit
@@ -372,13 +375,13 @@ EOF
 
   local snap env envcolor
   snap="$(load_snapshot 2>/dev/null)" || snap=""
-  case "$(sandbox_state "${snap:-{\}}")" in
+  case "$(sandbox_state "${snap:-"{}"}")" in
     sandbox) env="SANDBOX"; envcolor="$YELLOW" ;;
     prod) env="PROD"; envcolor="$RED" ;;
     *) env="UNKNOWN"; envcolor="$GREY" ;;
   esac
   printf '%sLimit offenders%s  %s%s%s  %s%s%s  since %s\n\n' \
-    "$BOLD" "$RESET" "$envcolor" "$env" "$RESET" "$GREY" "$(org_id "${snap:-{\}}")" "$RESET" \
+    "$BOLD" "$RESET" "$envcolor" "$env" "$RESET" "$GREY" "$(org_id "${snap:-"{}"}")" "$RESET" \
     "$(neutralize_plaintext "$(jq -r '.since.spec // "9am"' <<<"$h")" 32)"
 
   if [[ "$(jq -r '.availability' <<<"$h")" != "ok" ]]; then

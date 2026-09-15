@@ -71,13 +71,11 @@ pulse_one_alias() {
       '{alias:$a,id:null,sandboxState:"unknown",peakPct:null,peakName:null,limitsAvailability:"unknown",faults:null,faultsAvailability:"unknown",pinned:$pinned,error:"unreadable"}'
     return 0
   fi
-  local pct sev pk_name used max lav faults fav="ok"
+  local pct sev pk_name used max lav faults fav
   read -r pct sev pk_name used max < <(peak_util "$snap")
   lav="$(jq -r '.limitsAvailability // "ok"' <<<"$snap")"
-  local of=(-o "$alias")
-  faults="$(sf_json data query "${of[@]}" -q \
-    "SELECT COUNT(Id) c FROM FlowInterview WHERE InterviewStatus IN ('Error','Paused')" 2>/dev/null \
-    | jq -r '.records[0].c // empty' 2>/dev/null)" || faults=""
+  faults="$(jq -r '.faults.count // empty' <<<"$snap")"
+  fav="$(jq -r '.faults.availability // "unknown"' <<<"$snap")"
   if [[ ! "$faults" =~ ^[0-9]+$ ]]; then
     faults="null"
     fav="unknown"
@@ -222,8 +220,8 @@ EOF
 }
 
 desk_tooltip_block() {
-  local h
-  h="$(compute_desk)"
+  local h="${1:-}"
+  [[ -n "$h" ]] || h="$(compute_desk)"
   jq -r '.orgs[] | [
       (if .pinned then "*" else " " end),
       .alias,
@@ -244,25 +242,32 @@ desk_tooltip_block() {
 # Clipboard → context
 # ---------------------------------------------------------------------------
 clipboard_read() {
+  local max="${CLIP_MAX:-4000}" head_bin paste_bin
+  head_bin="$(pinned_cmd head || true)"
+  [[ -n "$head_bin" ]] || head_bin="head"
   if [[ -n "${1:-}" ]]; then
-    printf '%s' "$1"
+    printf '%s' "${1:0:max}"
     return 0
   fi
   if [[ ! -t 0 ]]; then
-    cat
+    "$head_bin" -c "$max"
     return 0
   fi
+  paste_bin="$(pinned_cmd wl-paste || true)"
+  if [[ -n "$paste_bin" ]]; then
+    PATH="${BLUECHIP_PINNED_PATH}" "$paste_bin" -n 2>/dev/null | "$head_bin" -c "$max" && return 0
+  fi
   if command -v wl-paste >/dev/null 2>&1; then
-    wl-paste -n 2>/dev/null && return 0
+    wl-paste -n 2>/dev/null | "$head_bin" -c "$max" && return 0
   fi
   if command -v xclip >/dev/null 2>&1; then
-    xclip -selection clipboard -o 2>/dev/null && return 0
+    xclip -selection clipboard -o 2>/dev/null | "$head_bin" -c "$max" && return 0
   fi
   if command -v xsel >/dev/null 2>&1; then
-    xsel --clipboard --output 2>/dev/null && return 0
+    xsel --clipboard --output 2>/dev/null | "$head_bin" -c "$max" && return 0
   fi
   if command -v pbpaste >/dev/null 2>&1; then
-    pbpaste 2>/dev/null && return 0
+    pbpaste 2>/dev/null | "$head_bin" -c "$max" && return 0
   fi
   return 1
 }
@@ -346,6 +351,11 @@ compute_clipboard() {
     text="${text:0:CLIP_MAX}"
   fi
   text="$(neutralize_plaintext "$text" "$CLIP_MAX")"
+  if ! clipboard_ingest_ok "$text"; then
+    jq -n --argjson org "$orgblob" \
+      '{ok:false,availability:"unknown",org:$org,kind:"unrecognized",token:null,packPath:null,markdown:null,error:{code:"unrecognized",message:"clipboard refused (url, flag-shaped, or empty)"}}'
+    return 0
+  fi
   local kind token
   kind="$(clipboard_classify "$text")"
   token="$(clipboard_token "$text")"

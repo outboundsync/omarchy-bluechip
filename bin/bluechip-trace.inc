@@ -42,28 +42,7 @@ _trace_query_flags() {
 }
 
 # If named-creds include is not sourced (shouldn't happen), provide a tiny fallback.
-if ! declare -F _nc_tooling_try >/dev/null 2>&1; then
-  _nc_tooling_try() {
-    local raw q
-    NC_LAST_REASON=""
-    for q in "$@"; do
-      raw="$(sf_try data query --use-tooling-api "${OFLAG[@]}" -q "$q")" || {
-        NC_LAST_REASON="$(classify_sf_error "$raw")"
-        case "$NC_LAST_REASON" in
-          object_forbidden|unauthenticated|unsupported)
-            printf '%s\n' "$raw"
-            return 1
-            ;;
-        esac
-        continue
-      }
-      printf '%s\n' "$raw"
-      return 0
-    done
-    [[ -n "${NC_LAST_RAW:-}" ]] && printf '%s\n' "$NC_LAST_RAW"
-    return 1
-  }
-fi
+# _nc_tooling_try is defined in bluechip-named-creds.inc (sourced first).
 
 compute_trace_status() {
   have_sf || { _trace_error sf_missing "sf CLI not found"; return 1; }
@@ -136,13 +115,13 @@ cmd_trace_status() {
   fi
   local snap state env
   snap="$(load_snapshot 2>/dev/null)" || snap=""
-  case "$(sandbox_state "${snap:-{\}}")" in
+  case "$(sandbox_state "${snap:-"{}"}")" in
     sandbox) env="SANDBOX" ;;
     prod) env="PROD" ;;
     *) env="UNKNOWN" ;;
   esac
   printf '%sTraceFlags%s  %s%s%s  %s%s%s\n\n' \
-    "$BOLD" "$RESET" "$YELLOW" "$env" "$RESET" "$GREY" "$(org_id "${snap:-{\}}")" "$RESET"
+    "$BOLD" "$RESET" "$YELLOW" "$env" "$RESET" "$GREY" "$(org_id "${snap:-"{}"}")" "$RESET"
   if [[ "$(jq -r '.availability' <<<"$h")" != "ok" ]]; then
     printf '  %sunknown%s  %s\n' "$GREY" "$RESET" \
       "$(neutralize_plaintext "$(jq -r '.error.message // "Tooling TraceFlag unavailable"' <<<"$h")" 200)"
@@ -441,13 +420,13 @@ cmd_logs() {
 
   local snap env
   snap="$(load_snapshot 2>/dev/null)" || snap=""
-  case "$(sandbox_state "${snap:-{\}}")" in
+  case "$(sandbox_state "${snap:-"{}"}")" in
     sandbox) env="SANDBOX" ;;
     prod) env="PROD" ;;
     *) env="UNKNOWN" ;;
   esac
   printf '%sApex logs%s  %s%s%s  %s%s%s  %s(capped %s bytes · %s rows)%s\n\n' \
-    "$BOLD" "$RESET" "$YELLOW" "$env" "$RESET" "$GREY" "$(org_id "${snap:-{\}}")" "$RESET" \
+    "$BOLD" "$RESET" "$YELLOW" "$env" "$RESET" "$GREY" "$(org_id "${snap:-"{}"}")" "$RESET" \
     "$DIM" "$LOG_MAX_BYTES" "$LOG_MAX_COUNT" "$RESET"
 
   if [[ "$(jq -r '.availability' <<<"$h")" != "ok" ]]; then
@@ -480,24 +459,32 @@ cmd_logs_follow() {
   set_oflag
   local seen="{}" snap env
   snap="$(load_snapshot 2>/dev/null)" || snap=""
-  case "$(sandbox_state "${snap:-{\}}")" in
+  case "$(sandbox_state "${snap:-"{}"}")" in
     sandbox) env="SANDBOX" ;;
     prod) env="PROD" ;;
     *) env="UNKNOWN" ;;
   esac
   printf 'bluechip logs --follow  %s  Ctrl-C to stop\n' "$env" >&2
 
-  local iters="${BLUECHIP_FOLLOW_ITERS:-0}" n=0
+  local iters="${BLUECHIP_FOLLOW_ITERS:-0}" n=0 backoff=2
   while true; do
     local h id
-    h="$(compute_logs 1)" || { sleep 2; n=$((n+1)); [[ "$iters" != "0" && $n -ge $iters ]] && break; continue; }
+    h="$(compute_logs 1)" || {
+      sleep "$backoff"
+      backoff=$(( backoff * 2 ))
+      (( backoff > 16 )) && backoff=16
+      n=$((n+1)); [[ "$iters" != "0" && $n -ge $iters ]] && break; continue
+    }
     if [[ "$(jq -r '.availability' <<<"$h")" != "ok" ]]; then
       [[ $want_json -eq 1 ]] && printf '%s\n' "$h"
-      sleep 2
+      sleep "$backoff"
+      backoff=$(( backoff * 2 ))
+      (( backoff > 16 )) && backoff=16
       n=$((n+1))
       [[ "$iters" != "0" && $n -ge $iters ]] && break
       continue
     fi
+    backoff=2
     while IFS= read -r id; do
       [[ -z "$id" ]] && continue
       jq -e --arg id "$id" 'has($id)' <<<"$seen" >/dev/null && continue
@@ -514,6 +501,6 @@ cmd_logs_follow() {
     done < <(jq -r '.logs[]?.id // empty' <<<"$h")
     n=$((n+1))
     [[ "$iters" != "0" && $n -ge $iters ]] && break
-    sleep 2
+    sleep "$backoff"
   done
 }

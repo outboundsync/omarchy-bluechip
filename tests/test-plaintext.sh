@@ -49,5 +49,19 @@ REDACTED="$(jq -nc '{Password:"x",apiName:"Zoom",consumerSecret:"y"}' | redact_s
 assert_eq "$(jq -r 'has("Password")' <<<"$REDACTED")" "false" "redact Password key"
 assert_eq "$(jq -r '.apiName' <<<"$REDACTED")" "Zoom" "redact keeps apiName"
 
+printf '%s\n' "path / clipboard ingest guards"
+path_is_unsafe "https://evil.example/x" && ok "url is unsafe" || bad "url should be unsafe"
+path_is_unsafe "-o" && ok "leading dash is unsafe" || bad "dash should be unsafe"
+path_is_unsafe "/tmp/pack.md" && bad "normal path should be safe" || ok "normal path is safe"
+clipboard_ingest_ok "SavvyCal_Webhook" && ok "flow api ingest ok" || bad "flow api should ingest"
+clipboard_ingest_ok "https://evil.example" && bad "url ingest should refuse" || ok "url ingest refused"
+clipboard_ingest_ok "-evil" && bad "flag ingest should refuse" || ok "flag ingest refused"
+safe_xdg_open "https://evil.example/x" && bad "xdg-open url should refuse" || ok "xdg-open url refused"
+safe_xdg_open "-o" && bad "xdg-open dash should refuse" || ok "xdg-open dash refused"
+
+printf '%s\n' "org_id_raw empty snap is one token"
+assert_eq "$(org_id_raw "" | tr '\n' '|')" "" "empty snap → empty id (no jq brace leak)"
+assert_eq "$(sandbox_state "" | tr '\n' '|')" "unknown" "empty snap sandbox_state unknown"
+
 printf '\n%s\n' "$PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

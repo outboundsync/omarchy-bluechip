@@ -3,15 +3,36 @@
 # Bound to the Waybar chip's on-click. Uses whatever launcher is on the system.
 set -o pipefail
 
+_self="${BASH_SOURCE[0]}"
+if [[ -L "$_self" ]]; then
+  _self="$(readlink -f "$_self" 2>/dev/null || readlink "$_self" || echo "$_self")"
+fi
+# shellcheck source=bluechip-lib.inc
+source "$(dirname "$_self")/bluechip-lib.inc"
+
 bluechip=bluechip
-command -v "$bluechip" >/dev/null 2>&1 || bluechip="$(dirname "$0")/bluechip"
+command -v "$bluechip" >/dev/null 2>&1 || bluechip="$(dirname "$_self")/bluechip"
 
-# Gather aliases from sf.
-orgs="$(sf org list --json 2>/dev/null | jq -r '
-  ([.result.nonScratchOrgs?, .result.sandboxes?, .result.scratchOrgs?, .result.devHubs?]
-   | map(.//[]) | add) | .[] | select(.alias != null and .alias != "") | .alias' | sort -u)"
+sf_bin="$(bluechip_resolve_sf_bin "${BLUECHIP_SF:-sf}")"
 
-[[ -z "$orgs" ]] && { command -v notify-send >/dev/null && notify-send "Bluechip" "No sf-authed orgs. Run: sf org login web"; exit 0; }
+raw=""
+if [[ -x "$sf_bin" || "$sf_bin" == */* ]]; then
+  raw="$(capped_stdout "${SF_MAX_BYTES}" "$sf_bin" org list --json)" || raw=""
+elif command -v "$sf_bin" >/dev/null 2>&1; then
+  raw="$(capped_stdout "${SF_MAX_BYTES}" "$sf_bin" org list --json)" || raw=""
+fi
+
+orgs=""
+if [[ -n "$raw" ]]; then
+  orgs="$(jq -r '
+    ([.result.nonScratchOrgs?, .result.sandboxes?, .result.scratchOrgs?, .result.devHubs?]
+     | map(.//[]) | add) | .[] | select(.alias != null and .alias != "") | .alias' <<<"$raw" 2>/dev/null | sort -u)"
+fi
+
+[[ -z "$orgs" ]] && {
+  notify_send_safe "Bluechip" "No sf-authed orgs. Run: sf org login web" || true
+  exit 0
+}
 
 # Pick a dmenu-style launcher (Omarchy ships walker; fall back through the usual suspects).
 pick=""
@@ -23,11 +44,16 @@ elif command -v rofi   >/dev/null 2>&1; then pick="$(menu | rofi -dmenu -p 'Pin 
 else "${TERMINAL:-xterm}" -e "$bluechip" orgs; exit 0
 fi
 
+pick="$(neutralize_plaintext "$pick" 80)"
 [[ -n "$pick" ]] || exit 0
+if path_is_unsafe "$pick" || ! org_alias_ok "$pick"; then
+  notify_send_safe "Bluechip" "Pin refused — invalid alias" || true
+  exit 0
+fi
 if ! "$bluechip" pin "$pick"; then
-  command -v notify-send >/dev/null && notify-send "Bluechip" "Pin refused — confirm prod/sandbox switch in a terminal"
+  notify_send_safe "Bluechip" "Pin refused — confirm prod/sandbox switch in a terminal" || true
   exit 0
 fi
 # Force an immediate chip refresh.
 pkill -RTMIN+8 waybar 2>/dev/null || true
-command -v notify-send >/dev/null && notify-send "Bluechip" "Pinned $pick"
+notify_send_safe "Bluechip" "Pinned $pick" || true

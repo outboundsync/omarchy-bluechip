@@ -68,20 +68,46 @@ RED=$(c 31); GREEN=$(c 32); YELLOW=$(c 33); BLUE=$(c 34); CYAN=$(c 36); GREY=$(c
 die() { printf '%s\n' "bluechip: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "missing dependency: $1"; }
 
+# Neutralize + spawn/IO helpers (bluechip-lib.inc). Sourced before sf_try / write_secure.
+_bluechip_self="${BASH_SOURCE[0]}"
+if [[ -L "$_bluechip_self" ]]; then
+  _bluechip_self="$(readlink -f "$_bluechip_self" 2>/dev/null || readlink "$_bluechip_self" || echo "$_bluechip_self")"
+fi
+# shellcheck source=bluechip-lib.inc
+source "$(dirname "$_bluechip_self")/bluechip-lib.inc"
+
+# Resolve sf on the caller PATH (nvm / ~/.local) to an absolute path so a
+# later cwd `sf` impostor cannot win. Do not pin PATH globally — node-based
+# `sf` still needs nvm. notify-send / xdg-open use pinned_cmd instead.
+SF_BIN="$(bluechip_resolve_sf_bin "$SF_BIN")"
+
 # 700 on the state dir, 600 on cache/credentials — first write, every write.
+# Refuse to mkdir through a symlink. Exclusive create (mktemp = O_EXCL) + 0600.
 ensure_state_dir() {
+  local old_umask
+  old_umask="$(umask)"
+  umask 077
   mkdir -p "$STATE_DIR" "$CACHE_DIR"
+  umask "$old_umask"
+  if [[ -L "$STATE_DIR" || -L "$CACHE_DIR" ]]; then
+    die "refusing symlink state/cache dir"
+  fi
   chmod 700 "$STATE_DIR" 2>/dev/null || true
   chmod 700 "$CACHE_DIR" 2>/dev/null || true
 }
 
 write_secure() { # <path>  (reads stdin)
-  local path="$1" tmp
+  local path="$1" dir tmp
   ensure_state_dir
-  tmp="${path}.tmp.$$"
+  dir="$(dirname "$path")"
+  if [[ -L "$path" || -L "$dir" ]]; then
+    printf 'bluechip: refusing to write through symlink: %s\n' "$path" >&2
+    return 1
+  fi
+  tmp="$(mktemp "${path}.XXXXXX")" || return 1
+  chmod 600 "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
   cat > "$tmp" || { rm -f "$tmp"; return 1; }
-  chmod 600 "$tmp" 2>/dev/null || true
-  mv "$tmp" "$path"
+  mv -f "$tmp" "$path"
   chmod 600 "$path" 2>/dev/null || true
 }
 
@@ -182,18 +208,31 @@ set_oflag() {
 }
 
 # Run `$SF_BIN <args> --json`. Echo the full CLI JSON. Return 0 iff .status==0.
+# stdout is byte-capped; stderr is discarded (never persisted). Timeout → TIMEOUT.
 sf_try() {
-  local out
-  out="$("$SF_BIN" "$@" --json 2>/dev/null)" || {
-    if [[ -n "$out" ]] && jq -e . >/dev/null 2>&1 <<<"$out"; then
-      printf '%s\n' "$out"
+  local out="" cap_ec=0
+  out="$(capped_stdout "$SF_MAX_BYTES" "$SF_BIN" "$@" --json)" || cap_ec=$?
+  case "$cap_ec" in
+    2)
+      printf '%s\n' '{"status":1,"name":"TRANSIENT","message":"sf output exceeded cap"}'
       return 1
-    fi
+      ;;
+    124)
+      printf '%s\n' '{"status":1,"name":"TIMEOUT","message":"sf timed out"}'
+      return 1
+      ;;
+  esac
+  if [[ -z "$out" ]]; then
     printf '%s\n' '{"status":1,"name":"TRANSIENT","message":"sf failed with no JSON"}'
     return 1
-  }
-  local s; s="$(jq -r '.status // 0' <<<"$out" 2>/dev/null)"
+  fi
+  if ! jq -e . >/dev/null 2>&1 <<<"$out"; then
+    printf '%s\n' '{"status":1,"name":"TRANSIENT","message":"sf failed with no JSON"}'
+    return 1
+  fi
   printf '%s\n' "$out"
+  local s
+  s="$(jq -r '.status // 0' <<<"$out" 2>/dev/null)"
   [[ "$s" == "0" ]]
 }
 
@@ -274,16 +313,11 @@ load_snapshot() {
   if [[ $FORCE_REFRESH -eq 1 ]] || ! snapshot_is_fresh; then
     build_snapshot || { [[ -f "$SNAPSHOT_FILE" ]] || return $?; }
   fi
-  cat "$SNAPSHOT_FILE"
+  local blob rc=0
+  blob="$(read_capped_file "$SNAPSHOT_FILE" "$FILE_MAX_BYTES")" || rc=$?
+  [[ $rc -eq 0 && -n "$blob" ]] || return 1
+  printf '%s\n' "$blob"
 }
-
-# Neutralize + org id helpers (bluechip-lib.inc).
-_bluechip_self="${BASH_SOURCE[0]}"
-if [[ -L "$_bluechip_self" ]]; then
-  _bluechip_self="$(readlink -f "$_bluechip_self" 2>/dev/null || readlink "$_bluechip_self" || echo "$_bluechip_self")"
-fi
-# shellcheck source=bluechip-lib.inc
-source "$(dirname "$_bluechip_self")/bluechip-lib.inc"
 
 # ---------------------------------------------------------------------------
 # Derived helpers over a snapshot (read from stdin)
@@ -412,13 +446,14 @@ cmd_bar() {
     "$text" "$name" "$env" "$oid" "$(org_pod "$snap")" "$(org_edition "$snap")" \
     "$(org_user "$snap")" "$peak_line" "$fault_line" "$age")"
 
-  local desk_json="null" desk_tip=""
-  if [[ $all -eq 1 ]] && declare -F desk_tooltip_block >/dev/null 2>&1; then
-    desk_tip="$(desk_tooltip_block)"
+  local desk_json="null" desk_tip="" desk_blob
+  # --all is opt-in. One desk pulse (cached per-alias TTL) — never N extra Tooling
+  # round-trips on the idle chip, and never compute_desk twice.
+  if [[ $all -eq 1 ]] && declare -F compute_desk >/dev/null 2>&1; then
+    desk_blob="$(compute_desk)"
+    desk_tip="$(desk_tooltip_block "$desk_blob")"
     [[ -n "$desk_tip" ]] && tooltip="$(printf '%s\n\nDesk (each org keeps its own chrome):\n%s' "$tooltip" "$desk_tip")"
-    if declare -F compute_desk >/dev/null 2>&1; then
-      desk_json="$(compute_desk | jq -c '.orgs')"
-    fi
+    desk_json="$(jq -c '.orgs' <<<"$desk_blob")"
   fi
 
   local pulse=0
@@ -858,11 +893,12 @@ cmd_doctor() {
 notify() { # <level> <msg>
   local level="$1" msg="$2" urg="normal"
   [[ "$level" == "critical" ]] && urg="critical"
-  if command -v notify-send >/dev/null 2>&1; then
-    notify-send -u "$urg" -a "Bluechip" "Salesforce: $level" "$msg"
-  else
-    printf '[%s] %s\n' "$level" "$msg" >&2
+  msg="$(neutralize_plaintext "$msg" 240)"
+  level="$(neutralize_plaintext "$level" 32)"
+  if notify_send_safe "Salesforce: $level" "$msg" "$urg"; then
+    return 0
   fi
+  printf '[%s] %s\n' "$level" "$msg" >&2
 }
 
 cmd_mcp_config() {

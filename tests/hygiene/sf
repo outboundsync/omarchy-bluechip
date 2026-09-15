@@ -46,6 +46,9 @@ _org_suffix() {
 }
 
 key=""
+if [[ -n "${BLUECHIP_SF_TRACE:-}" ]]; then
+  printf '%s\n' "${args[*]}" >> "$BLUECHIP_SF_TRACE"
+fi
 if [[ "${args[0]}" == "org" && "${args[1]}" == "display" ]]; then
   key="org.display$(_org_suffix)"
   rel="$(jq -r --arg k "$key" '.[$k] // empty' "$MAP")"

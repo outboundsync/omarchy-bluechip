@@ -408,13 +408,13 @@ _cmd_fls_print() {
   local h="$1" propose="${2:-0}"
   local snap env envcolor
   snap="$(load_snapshot 2>/dev/null)" || snap=""
-  case "$(sandbox_state "${snap:-{\}}")" in
+  case "$(sandbox_state "${snap:-"{}"}")" in
     sandbox) env="SANDBOX"; envcolor="$YELLOW" ;;
     prod) env="PROD"; envcolor="$RED" ;;
     *) env="UNKNOWN"; envcolor="$GREY" ;;
   esac
   printf '%sFLS matrix%s  %s%s%s  %s%s%s\n' \
-    "$BOLD" "$RESET" "$envcolor" "$env" "$RESET" "$GREY" "$(org_id "${snap:-{\}}")" "$RESET"
+    "$BOLD" "$RESET" "$envcolor" "$env" "$RESET" "$GREY" "$(org_id "${snap:-"{}"}")" "$RESET"
 
   if [[ "$(jq -r '.availability' <<<"$h")" == "unknown" && "$(jq -r '.fields | length' <<<"$h")" == "0" ]]; then
     printf '  %sunknown%s  %s\n' "$GREY" "$RESET" \

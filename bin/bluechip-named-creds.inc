@@ -385,7 +385,7 @@ cmd_named_creds() {
 
   local snap state env envcolor
   snap="$(load_snapshot 2>/dev/null)" || snap=""
-  state="$(sandbox_state "${snap:-{\}}")"
+  state="$(sandbox_state "${snap:-"{}"}")"
   case "$state" in
     sandbox) env="SANDBOX"; envcolor="$YELLOW" ;;
     prod)    env="PROD";    envcolor="$RED" ;;
@@ -393,7 +393,7 @@ cmd_named_creds() {
   esac
 
   printf '%sNamed / External Credentials%s  %s%s%s  %s%s%s\n' \
-    "$BOLD" "$RESET" "$envcolor" "$env" "$RESET" "$GREY" "$(org_id "${snap:-{\}}")" "$RESET"
+    "$BOLD" "$RESET" "$envcolor" "$env" "$RESET" "$GREY" "$(org_id "${snap:-"{}"}")" "$RESET"
   printf '%ssource: %s · secrets never printed%s\n\n' \
     "$DIM" "$(jq -r '.source' <<<"$h")" "$RESET"
 
