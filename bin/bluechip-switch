@@ -24,7 +24,10 @@ else "${TERMINAL:-xterm}" -e "$bluechip" orgs; exit 0
 fi
 
 [[ -n "$pick" ]] || exit 0
-"$bluechip" pin "$pick" >/dev/null 2>&1
+if ! "$bluechip" pin "$pick"; then
+  command -v notify-send >/dev/null && notify-send "Bluechip" "Pin refused — confirm prod/sandbox switch in a terminal"
+  exit 0
+fi
 # Force an immediate chip refresh.
 pkill -RTMIN+8 waybar 2>/dev/null || true
 command -v notify-send >/dev/null && notify-send "Bluechip" "Pinned $pick"

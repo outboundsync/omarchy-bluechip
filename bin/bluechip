@@ -258,6 +258,14 @@ load_snapshot() {
   cat "$SNAPSHOT_FILE"
 }
 
+# Neutralize + org id helpers (bluechip-lib.inc).
+_bluechip_self="${BASH_SOURCE[0]}"
+if [[ -L "$_bluechip_self" ]]; then
+  _bluechip_self="$(readlink -f "$_bluechip_self" 2>/dev/null || readlink "$_bluechip_self" || echo "$_bluechip_self")"
+fi
+# shellcheck source=bluechip-lib.inc
+source "$(dirname "$_bluechip_self")/bluechip-lib.inc"
+
 # ---------------------------------------------------------------------------
 # Derived helpers over a snapshot (read from stdin)
 # ---------------------------------------------------------------------------
@@ -284,17 +292,11 @@ sev_for_pct() { # <pct> -> green|warn|crit
 }
 
 is_sandbox() { jq -r '.org.IsSandbox // false' <<<"$1"; }
-# "sandbox" | "prod" | "unknown" — never assert prod when we couldn't read Organization.
-sandbox_state() {
-  jq -r 'if (.org | has("IsSandbox")) then (if .org.IsSandbox then "sandbox" else "prod" end) else "unknown" end' <<<"$1" 2>/dev/null \
-    || echo unknown
-}
-org_name()   { jq -r '.display.alias // .org.Name // .display.username // "org"' <<<"$1"; }
-org_user()   { jq -r '.display.username // "?"' <<<"$1"; }
-org_id()     { jq -r '.display.id // .org.Id // "?"' <<<"$1"; }
-org_pod()    { jq -r '.org.InstanceName // "?"' <<<"$1"; }
-org_edition(){ jq -r '.org.OrganizationType // "?"' <<<"$1"; }
-org_url()    { jq -r '.display.instanceUrl // "?"' <<<"$1"; }
+org_name()   { neutralize_plaintext "$(jq -r '.display.alias // .org.Name // .display.username // "org"' <<<"$1")" 120; }
+org_user()   { neutralize_plaintext "$(jq -r '.display.username // "?"' <<<"$1")" 120; }
+org_pod()    { neutralize_plaintext "$(jq -r '.org.InstanceName // "?"' <<<"$1")" 64; }
+org_edition(){ neutralize_plaintext "$(jq -r '.org.OrganizationType // "?"' <<<"$1")" 64; }
+org_url()    { neutralize_plaintext "$(jq -r '.display.instanceUrl // "?"' <<<"$1")" 256; }
 snap_age()   { jq -r '((now - .ts)|floor)' <<<"$1"; }
 
 # Worst headline utilization -> "pct sev name used max"
@@ -345,24 +347,28 @@ cmd_bar() {
     *)       env="?";       envclass="unknown"; glyph="" ;;
   esac
   name="$(org_name "$snap")"
+  local oid oid_bar
+  oid="$(org_id "$snap")"
+  oid_bar="$(org_id_trunc "$snap")"
   read -r pct sev pk_name used max < <(peak_util "$snap")
   age="$(human_secs "$(snap_age "$snap")")"
+  pk_name="$(neutralize_plaintext "$pk_name" 80)"
 
   local text tooltip pct_disp pct_json
   if [[ "$sev" == "unknown" ]]; then
     pct_disp="?%"
     pct_json="null"
-    tooltip="$(printf '%s  (%s)\n%s\nInstance: %s · %s\nUser: %s\nPeak limit: unknown (limits API missed — not 0%%)\nUpdated %s ago · click to switch org' \
-      "$name" "$env" "$(org_id "$snap")" "$(org_pod "$snap")" "$(org_edition "$snap")" \
+    tooltip="$(printf '%s  (%s)\nOrg Id: %s\nInstance: %s · %s\nUser: %s\nPeak limit: unknown (limits API missed — not 0%%)\nUpdated %s ago · click to switch org' \
+      "$name" "$env" "$oid" "$(org_pod "$snap")" "$(org_edition "$snap")" \
       "$(org_user "$snap")" "$age")"
   else
     pct_disp="$(printf '%d%%' "${pct:-0}")"
     pct_json="${pct:-0}"
-    tooltip="$(printf '%s  (%s)\n%s\nInstance: %s · %s\nUser: %s\nPeak limit: %s  %s/%s (%d%%)\nUpdated %s ago · click to switch org' \
-      "$name" "$env" "$(org_id "$snap")" "$(org_pod "$snap")" "$(org_edition "$snap")" \
+    tooltip="$(printf '%s  (%s)\nOrg Id: %s\nInstance: %s · %s\nUser: %s\nPeak limit: %s  %s/%s (%d%%)\nUpdated %s ago · click to switch org' \
+      "$name" "$env" "$oid" "$(org_pod "$snap")" "$(org_edition "$snap")" \
       "$(org_user "$snap")" "$pk_name" "$used" "$max" "$pct" "$age")"
   fi
-  text="$(printf '%s %s·%s  %s' "$glyph" "$name" "$env" "$pct_disp")"
+  text="$(printf '%s %s·%s·%s  %s' "$glyph" "$name" "$oid_bar" "$env" "$pct_disp")"
 
   jq -nc --arg t "$text" --arg tip "$tooltip" --arg env "$envclass" --arg sev "$sev" \
     --argjson pct "$pct_json" \
@@ -403,6 +409,17 @@ cmd_pin() {
     jq 'del(.pinnedOrg)' "$STATE_FILE" | write_secure "$STATE_FILE"
     echo "Cleared pin — bluechip will use the sf default org."
   else
+    have_sf || die "sf CLI not found."
+    local to_state to_id
+    pin_fetch_identity "$alias" || die "could not read org '$alias' (is it authed?)"
+    to_state="$PIN_FETCH_STATE"
+    to_id="$PIN_FETCH_ID"
+    pin_current_identity || true
+    # First pin (no prior snapshot): treat as same-class if we cannot compare.
+    if [[ -z "$(pinned_org)" && "${PIN_CUR_STATE:-unknown}" == "unknown" ]]; then
+      PIN_CUR_STATE="$to_state"
+    fi
+    pin_confirm_switch "$alias" "$to_state" "$to_id" || return 1
     jq --arg a "$alias" '.pinnedOrg = $a' "$STATE_FILE" | write_secure "$STATE_FILE"
     printf 'Pinned %s%s%s for bluechip.\n' "$BOLD" "$alias" "$RESET"
   fi
@@ -432,6 +449,7 @@ cmd_limits() {
     | [ .name, $used, .max,
         (if .max > 0 then (($used*100)/.max)|floor else 0 end) ] | @tsv
   ' <<<"$snap" 2>/dev/null | sort -t$'\t' -k4 -nr | while IFS=$'\t' read -r name used max pct; do
+      name="$(neutralize_plaintext "$name" 80)"
       printf '  %s %4d%%  %-34s %s%s/%s%s\n' "$(bar_gauge "$pct" 12)" "$pct" "$name" "$DIM" "$used" "$max" "$RESET"
     done
 }
@@ -453,6 +471,9 @@ cmd_flows() {
   jq -r '.records[] | [.InterviewStatus, (.InterviewLabel//"?"), (.CurrentElement//.PauseLabel//"—"), .CreatedDate] | @tsv' <<<"$res" \
   | while IFS=$'\t' read -r status label element created; do
       local color="$YELLOW"; [[ "$status" == "Error" ]] && color="$RED"
+      status="$(neutralize_plaintext "$status" 32)"
+      label="$(neutralize_plaintext "$label" 120)"
+      element="$(neutralize_plaintext "$element" 80)"
       printf '  %s%-8s%s %-40s %sat %s%s  %s%s%s\n' "$color" "$status" "$RESET" "$label" "$DIM" "$element" "$RESET" "$GREY" "${created%%.*}" "$RESET"
     done
 }
@@ -468,6 +489,9 @@ cmd_changes() {
   jq -r '.records[] | [ (.CreatedDate), (.CreatedBy.Name//"?"), (.Section//"—"), (.Display//.Action) ] | @tsv' <<<"$res" \
   | while IFS=$'\t' read -r created who section what; do
       local when="${created%%.*}"; when="${when/T/ }"   # 2026-09-14T16:03:22.000+0000 -> 2026-09-14 16:03:22
+      who="$(neutralize_plaintext "$who" 80)"
+      section="$(neutralize_plaintext "$section" 80)"
+      what="$(neutralize_plaintext "$what" 256)"
       printf '  %s%s%s  %s%-16s%s %s\n     %s%s%s\n' \
         "$GREY" "$when" "$RESET" "$CYAN" "$who" "$RESET" "$BLUE$section$RESET" "$DIM" "$what" "$RESET"
     done
@@ -507,18 +531,36 @@ _Generated by bluechip $BLUECHIP_VERSION · read-only · $(date -u +%Y-%m-%dT%H:
 
 ## Headline limit utilization
 $(headline_rows "$snap" | while IFS=$'\t' read -r used max pct name; do
+    name="$(neutralize_plaintext "$name" 80)"
     printf -- '- %s — %s%% used (%s / %s)\n' "$name" "$pct" "$used" "$max"; done)
 
 ## Open / failed Flow interviews (best-effort — hard faults may not persist)
-$(jq -r '.records[]? | "- [\(.InterviewStatus)] \(.InterviewLabel // "?") — element: \(.CurrentElement // "—") — \(.CreatedDate)"' <<<"$flows")
+$(jq -r '.records[]? | [.InterviewStatus, (.InterviewLabel // "?"), (.CurrentElement // "—"), .CreatedDate] | @tsv' <<<"$flows" \
+  | while IFS=$'\t' read -r st lbl el dt; do
+      st="$(neutralize_plaintext "$st" 32)"
+      lbl="$(neutralize_plaintext "$lbl" 120)"
+      el="$(neutralize_plaintext "$el" 80)"
+      printf -- '- [%s] %s — element: %s — %s\n' "$st" "$lbl" "$el" "$dt"
+    done)
 $(jq -e '.records | length > 0' <<<"$flows" >/dev/null || echo "- (none)")
 
 ## Recent Setup Audit Trail
-$(jq -r '.records[]? | "- \(.CreatedDate) — \(.CreatedBy.Name // "?") — \(.Section // "—"): \(.Action)"' <<<"$changes")
+$(jq -r '.records[]? | [.CreatedDate, (.CreatedBy.Name // "?"), (.Section // "—"), .Action] | @tsv' <<<"$changes" \
+  | while IFS=$'\t' read -r dt who sec act; do
+      who="$(neutralize_plaintext "$who" 80)"
+      sec="$(neutralize_plaintext "$sec" 80)"
+      act="$(neutralize_plaintext "$act" 256)"
+      printf -- '- %s — %s — %s: %s\n' "$dt" "$who" "$sec" "$act"
+    done)
 $(jq -e '.records | length > 0' <<<"$changes" >/dev/null || echo "- (none)")
 
 ## Recent ApexLog ids (pull with: sf apex log get --log-id <id>)
-$(jq -r '.records[]? | "- \(.Id) — \(.Operation) — \(.Status) — \(.StartTime) — \(.LogLength) bytes"' <<<"$logs")
+$(jq -r '.records[]? | [.Id, .Operation, .Status, .StartTime, (.LogLength|tostring)] | @tsv' <<<"$logs" \
+  | while IFS=$'\t' read -r lid op st tm ln; do
+      op="$(neutralize_plaintext "$op" 64)"
+      st="$(neutralize_plaintext "$st" 32)"
+      printf -- '- %s — %s — %s — %s — %s bytes\n' "$lid" "$op" "$st" "$tm" "$ln"
+    done)
 $(jq -e '.records | length > 0' <<<"$logs" >/dev/null || echo "- (none)")
 
 ---
@@ -528,10 +570,6 @@ EOF
 }
 
 # Hygiene probe lives in a sibling include so install.sh's symlink still resolves.
-_bluechip_self="${BASH_SOURCE[0]}"
-if [[ -L "$_bluechip_self" ]]; then
-  _bluechip_self="$(readlink -f "$_bluechip_self" 2>/dev/null || readlink "$_bluechip_self" || echo "$_bluechip_self")"
-fi
 # shellcheck source=bluechip-hygiene.inc
 source "$(dirname "$_bluechip_self")/bluechip-hygiene.inc"
 
@@ -570,11 +608,12 @@ cmd_doctor() {
   lastchange="$(sf_json data query "${OFLAG[@]}" -q \
     "SELECT CreatedDate, CreatedBy.Name, Section FROM SetupAuditTrail ORDER BY CreatedDate DESC LIMIT 1" 2>/dev/null \
     | jq -r '.records[0] | "\(.CreatedDate|split("T")[0]) · \(.CreatedBy.Name // "?") · \(.Section // "—")"' 2>/dev/null)" || lastchange="—"
+  lastchange="$(neutralize_plaintext "$lastchange" 200)"
 
   printf '%s%s%s' "$BLUE$BOLD" "$(ascii_logo)" "$RESET"
   printf '\n'
   printf '  %s%s%s   %s %s %s\n' "$BOLD" "$name" "$RESET" "$envcolor$BOLD" "$env" "$RESET"
-  printf '  %s%s · %s · %s%s\n' "$GREY" "$(org_edition "$snap")" "$(org_pod "$snap")" "$(org_id "$snap")" "$RESET"
+  printf '  %sOrg Id: %s · %s · %s%s\n' "$GREY" "$(org_id "$snap")" "$(org_edition "$snap")" "$(org_pod "$snap")" "$RESET"
   printf '  %s%s%s\n\n' "$DIM" "$(org_user "$snap")" "$RESET"
 
   # Headline gauges. Truncate long limit names so the gauge column stays aligned.
