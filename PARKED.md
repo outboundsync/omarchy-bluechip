@@ -7,8 +7,9 @@ admin cockpit on Omarchy. Harris authorized **ship everything** (Wave 1 first).
 silently rewrite `main` from this branch — open a separate docs PR into `main`
 when it is time to promote the story.
 
-Wave 1 on this tip: local read-only MCP, Named Credential inspector, confirm-gated
-TraceFlag + neutralized log tail. Ranked remainder: [docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md).
+Wave 2 on this tip: FLS / perm-set matrix (read + proposal-only), Event Log
+offenders, multi-org desk, clipboard → context. TraceFlag remains the only
+confirm-gated org write. Ranked remainder: [docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md).
 
 Connected App / QML / marketplace listing remain parked until a later wave
 needs them. Wave 1 rides `sf` CLI + Tooling-via-`sf` — no Connected App.

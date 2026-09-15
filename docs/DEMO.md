@@ -1,6 +1,6 @@
 # Bluechip — demo walkthrough
 
-A 60-second walkthrough of Wave 1 on the `bluechip-v1` **active build tip**.
+A 60-second walkthrough of Wave 2 on the `bluechip-v1` **active build tip**.
 `main` may still hold parked vision until a later promote. This is not a launch
 kit for a letter-grade product.
 
@@ -55,6 +55,13 @@ bluechip named-creds
 bluechip trace start          # type SANDBOX / alias; type PROD on prod
 bluechip logs --follow
 
+# 6b. Wave 2 probes (read-only; FLS propose does not apply):
+bluechip fls --user integration@acme.com --fields Account.SavvyCal_Id__c
+bluechip fls-propose --user integration@acme.com --fields Account.SavvyCal_Id__c
+bluechip offenders --since 9am
+bluechip desk
+bluechip clipboard --copy     # optional Hyprland bind: SUPER SHIFT+V
+
 # 7. Local MCP (optional):
 bluechip mcp-config
 ```
@@ -91,9 +98,9 @@ Do **not** use “What does yours get?” / letter-grade-as-org-truth copy.
 
 - Flow faults are **best-effort**: hard faults roll back and may not persist as
   `FlowInterview` rows.
-- Wave 1 calls `sf org display`, `sf org list limits`, `sf data query`,
-  `sf sobject describe`, **Tooling** for NamedCredential / ExternalCredential /
-  TraceFlag / DebugLevel, `sf apex get log`, and Metadata **list** (names only)
-  as a fallback. **Not** Metadata retrieve/deploy.
+- Wave 2 also calls ObjectPermissions / FieldPermissions / PermissionSetAssignment,
+  EventLogFile, and (best-effort) `sf api request rest` for LogFile bodies.
+  **Not** Metadata retrieve/deploy. **Not** FLS apply.
 - Hygiene acceptance tests: `./scripts/test-hygiene.sh` (H1–H10). Wave 1:
   `./tests/test-named-creds.sh`, `./tests/test-trace.sh`, `./tests/test-mcp.sh`.
+  Wave 2: `./tests/test-wave2.sh`.

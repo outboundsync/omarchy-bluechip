@@ -7,12 +7,12 @@ do not silently rewrite `main`.
 
 MIT cockpit ≠ paid OutboundSync hygiene SKU. The local probe stays read-only
 measured / unknown (H1–H10). No letter-grade marketing. No marketplace listing.
-No Connected App required for Wave 1 while `sf` CLI + Tooling-via-`sf` covers
+No Connected App required while `sf` CLI + Tooling-via-`sf` covers
 the calls.
 
 ---
 
-## Wave 1 — this PR (highest leverage: SF admin × Omarchy × agents)
+## Wave 1 — shipped on this tip
 
 | Item | Status | Notes |
 | --- | --- | --- |
@@ -24,22 +24,28 @@ the calls.
 
 **Wave 1 MCP tools:** `get_context` / `get_incident`, `get_limits`,
 `list_flow_faults`, `get_hygiene`, `list_orgs` / `get_pin`, plus display-only
-`get_named_creds`, `list_trace_flags`, `list_apex_logs`.
+`get_named_creds`, `list_trace_flags`, `list_apex_logs`. **No FLS write.**
 
 **Wave 1 CLI writes:** TraceFlag create/delete only, confirm-gated
 (sandbox-first; type `PROD` on prod; `--yes` banned on prod / unknown).
 
 ---
 
-## Wave 2
+## Wave 2 — this PR
 
-| Item | Why | Notes |
+| Item | Status | Notes |
 | --- | --- | --- |
-| FLS / perm-set matrix | Integration-user Read+Edit traps (SavvyCal / Harris × Brutus) | Confirm-gated *patch* later; Wave 2 can start read-only. CLI stub: `bluechip fls`. |
-| Limit offenders | “What ate API since 9am?” | Event Log / Flex / Digital Wallet when the running user can see them. Unknown when not. CLI stub: `bluechip offenders`. |
-| Multi-org bar | More than one hot org | Waybar / pin UX for several aliases without losing chrome. |
-| Clipboard → context hotkey | Agent hand-off without typing | Omarchy bind: selection/clipboard → `bluechip context`. CLI stub: `bluechip clipboard`. |
-| Confirm-gated write kit | FLS patch / Flow activate | TraceFlag is already gated. Extend the same matrix. **No MCP write tools** until the matrix is in-process (not `--yes` from an agent). |
+| FLS / perm-set matrix | **shipped** | `bluechip fls --user --fields`. Read vs Edit gaps. Unknown on SOQL miss — no invented Setup menus. |
+| FLS proposal (not apply) | **shipped** | `bluechip fls-propose`. Diff only. Confirm matrix documented for a future sandbox-first apply. Not an MCP tool. |
+| Limit offenders | **shipped** | `bluechip offenders [--since 9am]`. Event Log File when visible. Flex Credits `unknown`. Miss → unknown, never fake 0. LogFile bodies not cached. |
+| Multi-org bar / desk | **shipped** | `bluechip desk` + `bluechip bar --all`. Per-org chrome. Pin confirm still gates crossing. |
+| Clipboard → context | **shipped** | `bluechip clipboard` / `bluechip-clipboard`. Hyprland bind is documented, not installed. |
+| Confirm-gated write kit | **TraceFlag shipped; FLS apply deferred** | TraceFlag remains the only org write. FLS apply would reuse that matrix (sandbox-first; type `PROD`; `--yes` banned on prod / unknown; no MCP write). |
+
+**Wave 2 MCP tools (display-only):** Wave 1 set plus `get_fls`, `list_offenders`, `get_desk`.
+No FLS apply, no TraceFlag create.
+
+**Kept:** H1–H10, neutralize, three-valued `sandboxState`, last-good on FLS (not Event Log bodies).
 
 ---
 
@@ -64,12 +70,12 @@ Captured so they cannot be “forgotten into shipped”:
 2. **Named Credential inspector** — header *flags* and principal names, never Consumer Secret / password / Authorization values (Wave 1).
 3. **TraceFlag + log tail** — debug-before-activate without Setup archaeology (Wave 1 CLI; MCP create deferred).
 4. **Apex-defined type explorer** — later.
-5. **Limit offenders** — Event Log / Flex when available (Wave 2).
-6. **FLS matrix** — probe before inventing fields (Wave 2).
-7. **Write kit** — confirm-gated FLS patch / Flow activate (Wave 2+). TraceFlag already gated.
-8. **Multi-org** — bar + pin for more than one org (Wave 2).
+5. **Limit offenders** — Event Log when available (Wave 2). Flex Credits remain unknown (no stable CLI object).
+6. **FLS matrix** — probe before inventing fields (Wave 2). Apply deferred; `fls-propose` is the write-kit stand-in.
+7. **Write kit** — confirm-gated FLS patch / Flow activate (later). TraceFlag already gated. Proposal matrix is documented.
+8. **Multi-org** — bar + pin for more than one org (Wave 2: `desk` / `bar --all`).
 9. **Clipboard hand-off** — hotkey → context pack (Wave 2).
-10. **Offline last-good everywhere** — snapshot + hygiene + named-creds persist last-good. Logs/trace bodies are **not** cached (PII). Remaining: propagate last-good chrome to every new probe the same way.
+10. **Offline last-good everywhere** — snapshot + hygiene + named-creds + FLS persist last-good. Logs/trace/Event Log bodies are **not** cached (PII).
 
 ---
 

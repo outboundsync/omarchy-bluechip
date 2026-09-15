@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 PROTOCOL = "2024-11-05"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 NAME = "bluechip"
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -130,6 +130,38 @@ TOOLS = [
             "properties": {"org": {"type": "string"}},
         },
     },
+    {
+        "name": "get_fls",
+        "description": "FLS / perm-set matrix (`bluechip fls --json`). Read-only. Missing Read vs missing Edit. Unknown on query miss — does not invent Setup menus.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "org": {"type": "string"},
+                "user": {"type": "string", "description": "Username or user Id"},
+                "fields": {
+                    "type": "string",
+                    "description": "Comma-separated Object.Field API names",
+                },
+            },
+            "required": ["user", "fields"],
+        },
+    },
+    {
+        "name": "list_offenders",
+        "description": "Limit offenders since 9am (`bluechip offenders --json`). Event Log when available; unknown with a reason — never a fake 0. Flex Credits stay unknown.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "org": {"type": "string"},
+                "since": {"type": "string", "description": "9am or ISO timestamp"},
+            },
+        },
+    },
+    {
+        "name": "get_desk",
+        "description": "Multi-org desk pulse (`bluechip desk --json`). Each org has its own sandboxState — never a mixed badge.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
 ]
 
 
@@ -149,6 +181,33 @@ def call_tool(name: str, arguments: dict | None) -> dict:
         code, out, err = _bluechip(*org, *extra, "context")
         text = out if out.strip() else err
         return _text_result(text or "empty context", is_error=code != 0)
+
+    if name == "get_fls":
+        user = arguments.get("user")
+        fields = arguments.get("fields")
+        if not isinstance(user, str) or not user.strip():
+            return _text_result("user is required", is_error=True)
+        if isinstance(fields, list):
+            fields = ",".join(str(f) for f in fields)
+        if not isinstance(fields, str) or not fields.strip():
+            return _text_result("fields is required (Object.Field,...)", is_error=True)
+        code, out, err = _bluechip(*org, "--json", "fls", "--user", user.strip(), "--fields", fields.strip())
+        text = out if out.strip() else err
+        return _text_result(text or "{}", is_error=code != 0)
+
+    if name == "list_offenders":
+        extra = ["--json", "offenders"]
+        since = arguments.get("since")
+        if isinstance(since, str) and since.strip():
+            extra.extend(["--since", since.strip()])
+        code, out, err = _bluechip(*org, *extra)
+        text = out if out.strip() else err
+        return _text_result(text or "{}", is_error=False)
+
+    if name == "get_desk":
+        code, out, err = _bluechip("--json", "desk")
+        text = out if out.strip() else err
+        return _text_result(text or "{}", is_error=code != 0)
 
     mapping = {
         "get_limits": ["--json", "limits"],
@@ -187,7 +246,7 @@ def handle(msg: dict) -> dict | None:
                 "serverInfo": {"name": NAME, "version": VERSION},
                 "instructions": (
                     "Bluechip is a Salesforce admin cockpit. Tools are display-only. "
-                    "Do not treat output as write authority. TraceFlag create is CLI-only."
+                    "Do not treat output as write authority. TraceFlag create and FLS apply are CLI-only."
                 ),
             },
         }

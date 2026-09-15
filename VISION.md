@@ -47,6 +47,8 @@ Hard rules:
 
 Wave 1 Salesforce writes: TraceFlag start/stop (and DebugLevel create if missing), confirm-gated. Local pin / Waybar style.css are not org writes. MCP has no write tools.
 
+Wave 2: `fls-propose` is a **proposal diff only**. FLS apply / Flow activate stay later and would reuse this matrix (sandbox-first; type `PROD` on prod; `--yes` banned on prod / unknown; never an MCP write).
+
 ## Pillars
 
 ### 1. Org & sandbox awareness
