@@ -7,15 +7,15 @@
 // `install.sh` can do this for you.
 {
   "custom/bluechip": {
-    "exec": "bluechip bar",          // or `bluechip bar --all` for a desk tooltip; chip chrome stays the pin
+    "exec": "bluechip bar",          // compact identity + worst signal (SBX · 62%); `bar --all` adds desk tooltip
 
     "return-type": "json",
     "interval": 300,          // refresh cadence; bluechip caches so this is cheap
     "signal": 8,              // `pkill -RTMIN+8 waybar` forces an immediate refresh
     "format": "{}",
-    "on-click": "bluechip-switch",                       // pick / pin an org (dmenu)
+    "on-click": "bluechip-switch",                       // pin org (dmenu) — bar = worst signal
     "on-click-right": "bluechip refresh && pkill -RTMIN+8 waybar",
-    "on-click-middle": "${TERMINAL:-alacritty} -e bluechip doctor",   // full org-vitals card
+    "on-click-middle": "${TERMINAL:-alacritty} -e bluechip doctor",   // tables: doctor card
     "tooltip": true
   }
 }

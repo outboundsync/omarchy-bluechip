@@ -142,6 +142,7 @@ def write_common(d: Path, *, alias: str, sandbox: bool, org_id: str) -> dict:
     write(d / "apex-log.json", records(APEX_LOG))
     write(d / "apex-get.json", ok({"log": "12:05:00.0 (005...) USER_DEBUG [DEBUG] hello\nAuthorization: Bearer LEAK\npassword=nope"}))
     write(d / "flows.json", records())
+    write(d / "flows-count.json", records({"c": 0}))
     write(d / "changes.json", records())
     return {
         "org.display": "org-display.json",
@@ -151,6 +152,7 @@ def write_common(d: Path, *, alias: str, sandbox: bool, org_id: str) -> dict:
         "query.User.other": "user.json",
         "query.ApexLog.other": "apex-log.json",
         "query.FlowInterview.other": "flows.json",
+        "query.FlowInterview.count": "flows-count.json",
         "query.SetupAuditTrail.other": "changes.json",
         "apex.get.log": "apex-get.json",
     }

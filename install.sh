@@ -35,8 +35,10 @@ mkdir -p "$BIN_DST"
 ln -sf "$REPO_DIR/bin/bluechip"        "$BIN_DST/bluechip"
 ln -sf "$REPO_DIR/bin/bluechip-switch" "$BIN_DST/bluechip-switch"
 ln -sf "$REPO_DIR/bin/bluechip-clipboard" "$BIN_DST/bluechip-clipboard"
-chmod +x "$REPO_DIR/bin/bluechip" "$REPO_DIR/bin/bluechip-switch" "$REPO_DIR/bin/bluechip-clipboard"
-ok "linked bluechip + bluechip-switch + bluechip-clipboard → $BIN_DST"
+ln -sf "$REPO_DIR/bin/bluechip-scratchpad" "$BIN_DST/bluechip-scratchpad"
+chmod +x "$REPO_DIR/bin/bluechip" "$REPO_DIR/bin/bluechip-switch" \
+  "$REPO_DIR/bin/bluechip-clipboard" "$REPO_DIR/bin/bluechip-scratchpad"
+ok "linked bluechip + switch + clipboard + scratchpad → $BIN_DST"
 case ":$PATH:" in
   *":$BIN_DST:"*) : ;;
   *) warn "$BIN_DST is not on your PATH — add it to your shell rc." ;;
@@ -66,7 +68,7 @@ fi
 # 4) Smoke test -------------------------------------------------------------
 say ""
 if command -v sf >/dev/null 2>&1 && sf org display >/dev/null 2>&1; then
-  ok "Authed org detected — try:  ${bold}bluechip doctor${rst}"
+  ok "Authed org detected — try:  ${bold}bluechip doctor${rst}   then add the Waybar chip"
 else
   say "  ${dim}Next:${rst}  sf org login web   &&   ${bold}bluechip doctor${rst}"
 fi

@@ -1,6 +1,8 @@
 # Bluechip — demo walkthrough
 
-A 60-second walkthrough of Wave 2 on the `bluechip-v1` **active build tip**.
+A 60-second walkthrough of Wave 2 + the UX pass on the `bluechip-v1` **active
+build tip**. Product SoT for the harness: [UX-PASS.md](UX-PASS.md). README is
+the install/trust story — this file stays a short script, not a second manual.
 `main` may still hold parked vision until a later promote. This is not a launch
 kit for a letter-grade product.
 
@@ -48,7 +50,8 @@ bluechip hygiene
 bluechip hygiene --json   # availability / dimensions / error shape
 
 # 5. Hand-off for an agent (display-only — not write authority):
-bluechip context | wl-copy
+bluechip incident | wl-copy
+#    or: bluechip context | wl-copy
 
 # 6. Named creds (never prints secrets) + confirm-gated debug:
 bluechip named-creds
@@ -72,8 +75,9 @@ bluechip mcp-config
   UNKNOWN when we could not read `Organization.IsSandbox`.
 - **Limits before they page you.** API, storage, async Apex, platform events —
   amber → red in the bar. A limits miss is unknown, not a healthy 0%.
-- **Agent context pack.** `bluechip context` assembles org id, limits, Flow
-  faults, and ApexLog ids into one paste. It is not authorization to deploy.
+- **Agent context pack.** `bluechip incident` (or `context`) assembles org id,
+  limits, Flow faults, named-cred summary, and ApexLog ids into one paste. It is
+  not authorization to deploy.
 - **Read-only.** Uses *your* `sf` login. No Connected App, no stored secrets,
   nothing written to your org. Writes/confirm-gate come later, sandbox-first
   ([matrix](../VISION.md#confirm-before-write-matrix)).

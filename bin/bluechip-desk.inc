@@ -205,12 +205,12 @@ EOF
           esac
           local star=" "
           [[ "$mark" == "*" ]] && star="${YELLOW}★${RESET}"
-          printf '  %s %-22s %s%-8s%s %4s%%  %-22s faults %s  %s\n' \
+          printf '  %s %-22s %s%-8s%s %s  %-22s faults %s  %s\n' \
             "$star" "$(neutralize_plaintext "$alias" 22)" \
             "$envcolor" "$env" "$RESET" \
-            "$(neutralize_plaintext "$pct" 4)" \
+            "$(if [[ "$pct" =~ ^[0-9]+$ ]]; then printf '%s%%' "$pct"; else printf 'unknown'; fi)" \
             "$(neutralize_plaintext "$pk" 22)" \
-            "$(neutralize_plaintext "$faults" 8)" \
+            "$(if [[ "$faults" == "?" ]]; then printf 'unknown'; else neutralize_plaintext "$faults" 8; fi)" \
             "$(neutralize_plaintext "$oid" 18)"
         done
       printf '\n  %sEach row has its own chrome — prod and sandbox are never one badge.%s\n' "$DIM" "$RESET"
@@ -456,9 +456,10 @@ ${BOLD}bluechip clipboard${RESET} — clipboard → context pack
       org Id, enrich a context pack and print the path. --copy also writes
       the pack back to the clipboard.
 
-Hyprland bind example (do not require a DE binding to use the CLI):
+Hyprland bind example (optional — CLI works without a DE bind). Copy pack:
 
   bind = SUPER SHIFT, V, exec, bluechip clipboard --copy
+  bluechip incident | wl-copy
 
 Reads wl-paste / xclip / stdin. Tests: --text.
 EOF

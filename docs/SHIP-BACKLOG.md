@@ -49,6 +49,25 @@ No FLS apply, no TraceFlag create.
 
 ---
 
+## UX pass — this PR (Harris 2026-09-15)
+
+Product SoT: [UX-PASS.md](UX-PASS.md). Same PR as the code — not a docs-only split.
+
+| Item | Status | Notes |
+| --- | --- | --- |
+| One chip, three reads | **this PR** | Idle `SBX · 62%`; warn/crit on faults or limits; unknown muted |
+| Verbs / help --all | **this PR** | Primary verbs in default help; pipes documented |
+| Incident object | **this PR** | `bluechip incident --json`; MCP `get_incident` matches; doctor --json reuses builder |
+| Watch as entr | **this PR** | Deltas + `--jsonl` / `--once`; pulse class on real transitions |
+| Scratchpad | **this PR** | Hyprland special workspace; no QML |
+| Clipboard toast | **this PR** | Success only; Copy pack in README |
+| Honest empty states | **this PR** | `unknown (reason)` vs `none` |
+| Composer pipeline | **this PR** | pin → pulse → probe → pack → agent → confirm write |
+| Simplify default path | **this PR** | install → login → doctor → chip; DEMO stays 60s |
+| QML / types / Connected App | **later** | Quattro panel = Fabius; not this PR |
+
+---
+
 ## Later
 
 | Item | Why |

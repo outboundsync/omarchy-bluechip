@@ -5,8 +5,9 @@
  * PROD/SANDBOX signal is unmistakable in any theme.
  *
  * Classes emitted by `bluechip bar`:
- *   .prod / .sandbox   — environment
- *   .ok / .warn / .crit — peak limit severity
+ *   .prod / .sandbox / .unknown — environment (UNKNOWN is muted, never fake-green)
+ *   .ok / .warn / .crit / .unknown — worst-signal severity
+ *   .pulse — brief flash after a real `bluechip watch` transition
  */
 
 #custom-bluechip {
@@ -41,7 +42,23 @@
   color: #1e1e2e;
 }
 
-/* Unknown / not-logged-in — muted. */
+/* UNKNOWN: muted — never a healthy green fill. */
 #custom-bluechip.unknown {
   color: #6c7086;
+  background-color: transparent;
+  font-weight: normal;
+}
+
+/* Healthy peak: inherit identity chrome. Do not paint a fake-green pill. */
+#custom-bluechip.ok {
+  /* identity classes (.prod / .sandbox) already set color */
+}
+
+/* Pulse after a real watch transition (limit cross, new Flow fault). */
+@keyframes bluechip-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+#custom-bluechip.pulse {
+  animation: bluechip-pulse 1.2s ease-in-out 3;
 }

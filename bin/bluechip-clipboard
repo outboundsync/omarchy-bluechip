@@ -8,11 +8,8 @@ bluechip=bluechip
 command -v "$bluechip" >/dev/null 2>&1 || bluechip="$(dirname "$0")/bluechip"
 "$bluechip" clipboard --copy "$@"
 ec=$?
-if command -v notify-send >/dev/null 2>&1; then
-  if [[ $ec -eq 0 ]]; then
-    notify-send -a "Bluechip" "Context pack" "Clipboard looked like a Flow / interview / org Id — pack copied."
-  else
-    notify-send -a "Bluechip" "Clipboard" "Not a Flow API name, interview Id, or org Id."
-  fi
+# Toast only on success — unrecognized selection stays quiet (UX-PASS).
+if [[ $ec -eq 0 ]] && command -v notify-send >/dev/null 2>&1; then
+  notify-send -a "Bluechip" "Copy pack" "Context pack copied."
 fi
 exit "$ec"

@@ -499,7 +499,7 @@ compute_hygiene() {
 
 hygiene_doctor_line() {
   local f="$HYGIENE_CACHE" e="$HYGIENE_ERROR_FILE"
-  [[ -f "$f" ]] || { printf '%s— run `bluechip hygiene`%s' "$DIM" "$RESET"; return; }
+  [[ -f "$f" ]] || { printf '%sunknown (not run)%s' "$GREY" "$RESET"; return; }
   local avail grade score
   avail="$(jq -r '.overall.availability // .availability // empty' "$f" 2>/dev/null)"
   grade="$(jq -r '.overall.grade // empty' "$f" 2>/dev/null)"
