@@ -76,8 +76,8 @@ ORGS="$(HOME="$WORKDIR/home-ok" XDG_CONFIG_HOME="$WORKDIR/home-ok/.config" \
   BLUECHIP_SF="$STUB" BLUECHIP_FIXTURE="$FIX/ok" \
   "$BLUECHIP" --no-color --json orgs 2>/dev/null)"
 assert_json "$ORGS" '.ok' "true" "orgs json ok"
-STUB_HELP="$("$BLUECHIP" --no-color fls 2>/dev/null)" || true
-[[ "$STUB_HELP" == *SHIP-BACKLOG* ]] && ok "fls stub points at backlog" || bad "fls stub missing backlog"
+STUB_HELP="$("$BLUECHIP" --no-color types 2>/dev/null)" || true
+[[ "$STUB_HELP" == *SHIP-BACKLOG* ]] && ok "types stub points at backlog" || bad "types stub missing backlog"
 
 printf '%s\n' "named-creds — Metadata list fallback"
 MD="$(run_nc metadata-only 2>/dev/null)"

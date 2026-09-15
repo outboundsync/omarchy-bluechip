@@ -34,8 +34,9 @@ fi
 mkdir -p "$BIN_DST"
 ln -sf "$REPO_DIR/bin/bluechip"        "$BIN_DST/bluechip"
 ln -sf "$REPO_DIR/bin/bluechip-switch" "$BIN_DST/bluechip-switch"
-chmod +x "$REPO_DIR/bin/bluechip" "$REPO_DIR/bin/bluechip-switch"
-ok "linked bluechip + bluechip-switch → $BIN_DST"
+ln -sf "$REPO_DIR/bin/bluechip-clipboard" "$BIN_DST/bluechip-clipboard"
+chmod +x "$REPO_DIR/bin/bluechip" "$REPO_DIR/bin/bluechip-switch" "$REPO_DIR/bin/bluechip-clipboard"
+ok "linked bluechip + bluechip-switch + bluechip-clipboard → $BIN_DST"
 case ":$PATH:" in
   *":$BIN_DST:"*) : ;;
   *) warn "$BIN_DST is not on your PATH — add it to your shell rc." ;;

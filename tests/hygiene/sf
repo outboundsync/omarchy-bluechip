@@ -12,6 +12,7 @@ use_tooling=0
 metadata_type=""
 record_id=""
 log_id=""
+api_url=""
 args=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -31,6 +32,10 @@ while [[ $# -gt 0 ]]; do
     --query=*) query="${1#*=}"; shift ;;
     -o|--org|--target-org) org_flag="$2"; shift 2 ;;
     --org=*|--target-org=*) org_flag="${1#*=}"; shift ;;
+    --method) shift 2 ;;
+    --method=*) shift ;;
+    --url) api_url="$2"; shift 2 ;;
+    --url=*) api_url="${1#*=}"; shift ;;
     *) args+=("$1"); shift ;;
   esac
 done
@@ -63,6 +68,12 @@ elif [[ "${args[0]}" == "data" && "${args[1]}" == "delete" ]]; then
   [[ $use_tooling -eq 1 ]] && key="tooling.delete.${sobject}"
 elif [[ "${args[0]}" == "apex" && "${args[1]}" == "get" ]]; then
   key="apex.get.log"
+elif [[ "${args[0]}" == "api" ]]; then
+  key="api.request"
+  blob="${api_url} ${args[*]}"
+  if [[ "$blob" == *EventLogFile* ]]; then
+    key="api.request.EventLogFile"
+  fi
 elif [[ "${args[0]}" == "data" && "${args[1]}" == "query" ]]; then
   obj="$(sed -n 's/.*FROM \([A-Za-z][A-Za-z0-9_]*\).*/\1/p' <<<"$query" | head -1)"
   if [[ $use_tooling -eq 1 ]]; then
@@ -81,6 +92,8 @@ elif [[ "${args[0]}" == "data" && "${args[1]}" == "query" ]]; then
       obj="Organization"
       rel="$(jq -r --arg k "query.${obj}.${kind}" '.[$k] // empty' "$MAP")"
       [[ -z "$rel" && -n "$org_flag" ]] && kind="row"
+    elif [[ "$query" == *"FROM FlowInterview"* && "$query" == *"COUNT("* ]]; then
+      kind="count"
     elif [[ "$query" == *"GROUP BY"* ]]; then kind="dupes"
     elif [[ "$query" == *"LastActivityDate"* ]]; then kind="freshness"
     elif [[ "$query" == *"Owner.IsActive"* ]]; then kind="ownership"

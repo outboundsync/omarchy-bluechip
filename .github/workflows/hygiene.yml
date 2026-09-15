@@ -19,3 +19,7 @@ jobs:
           ./tests/test-named-creds.sh
           ./tests/test-trace.sh
           python3 ./tests/test-mcp.sh
+      - name: Wave 2 (FLS, offenders, desk, clipboard)
+        run: |
+          chmod +x tests/test-wave2.sh
+          ./tests/test-wave2.sh

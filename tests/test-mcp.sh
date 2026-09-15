@@ -94,12 +94,15 @@ def main() -> int:
             "get_named_creds",
             "list_trace_flags",
             "list_apex_logs",
+            "get_fls",
+            "list_offenders",
+            "get_desk",
         }
         if expected <= names:
-            ok("tools/list has Wave 1 read tools")
+            ok("tools/list has Wave 1+2 read tools")
         else:
             bad(f"missing tools: {expected - names}")
-        writes = {"trace_start", "create_trace", "start_trace", "deploy", "pin_org"}
+        writes = {"trace_start", "create_trace", "start_trace", "deploy", "pin_org", "fls_apply", "fls_propose"}
         if names & writes:
             bad(f"write tools exposed: {names & writes}")
         else:
