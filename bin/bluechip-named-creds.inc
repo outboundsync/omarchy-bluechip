@@ -349,8 +349,31 @@ _nc_hdr() {
 }
 
 cmd_named_creds() {
-  local want_json=0
-  [[ "${1:-}" == "--json" || "${WANT_JSON:-0}" -eq 1 ]] && want_json=1
+  local want_json=0 doctor=0 user=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) want_json=1; shift ;;
+      --doctor) doctor=1; shift ;;
+      --user) user="${2:-}"; shift 2 ;;
+      --user=*) user="${1#*=}"; shift ;;
+      help|-h|--help)
+        if [[ $doctor -eq 1 ]]; then _ca_usage_auth; else
+          printf '%sbluechip named-creds%s — Named / External Credential inspector (never secrets)\n' "$BOLD" "$RESET"
+          printf '  named-creds [--json] [--doctor [--user …]]\n'
+        fi
+        return 0
+        ;;
+      *) break ;;
+    esac
+  done
+  [[ "${WANT_JSON:-0}" -eq 1 ]] && want_json=1
+  if [[ $doctor -eq 1 ]]; then
+    local args=()
+    [[ $want_json -eq 1 ]] && args+=(--json)
+    [[ -n "$user" ]] && args+=(--user "$user")
+    cmd_callout_auth "${args[@]}"
+    return $?
+  fi
 
   if ! have_sf; then
     local err; err="$(probe_error_json sf_missing "sf CLI not found")"

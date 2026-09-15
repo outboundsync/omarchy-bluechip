@@ -24,12 +24,16 @@ Prefer MCP when wired. Otherwise the matching CLI `--json` verb.
 | `list_orgs` | `bluechip orgs --json` | sf-authed orgs + pin |
 | `get_pin` | `bluechip pin --json` | **Read-only** — will not change the pin |
 | `get_named_creds` | `bluechip named-creds --json` | Secrets never returned |
+| `diagnose_callout_auth` | `bluechip callout-auth --json` | 401 classes; optional `--user` |
+| `get_apex_types` | `bluechip types --json [Class…]` | IN_/OUT_2XX property paths |
+| `get_callout_pack` | `bluechip callout-pack --json <Flow>` | Hand-off, not write authority |
+| `run_preflight` | `bluechip preflight --json --user …` | FLS + NC principal; no Activate |
 | `list_trace_flags` | `bluechip trace status --json` | No create/stop |
 | `list_apex_logs` | `bluechip logs --json` | Metadata only; bodies via CLI tail |
 | `get_fls` | `bluechip fls --json --user … --fields …` | Read vs Edit gaps |
 | `get_desk` | `bluechip desk --json` | Per-org `sandboxState` |
 
-**CLI-only (not MCP):** `bluechip pin <alias>` · `trace start\|stop` · `fls-propose` · `logs --follow` · `watch` · `clipboard` · `scratchpad`.
+**CLI-only (not MCP):** `bluechip pin <alias>` · `trace start\|stop` · `fls-propose` · `logs --follow` · `watch` · `clipboard` · `scratchpad` (`--boundary` prints the Worker + org tail pair).
 
 Pipes: `bluechip incident \| wl-copy` · `bluechip incident --json \| jq .signal`.
 
@@ -70,10 +74,24 @@ Fixture-shaped samples (no live org, no secrets): [examples/incident.sample.json
 
 ## Named Cred auth?
 
-1. `get_named_creds`. You get API names, endpoint (query-stripped), principal *counts*, header **flags**.
-2. **Never returned:** Consumer Secret, password, `ParameterValue`, Authorization values, `Metadata` blob.
-3. If `availability: unknown`, say the Tooling/list probe missed — do not guess the header formula.
-4. Auth repair is Brutus/human in Setup. Agents do not invent a Connected App.
+1. `get_named_creds` for inventory. `diagnose_callout_auth` / `bluechip callout-auth` for 401 classes.
+2. Reasons you may name (only when Tooling measured them):
+   - `headers_absent` — `GenerateAuthorizationHeader` off and custom header count 0 (Auth Parameter alone never sent `Authorization`).
+   - `formulas_off` — headers present/needed but `AllowMergeFieldsInHeader` is false.
+   - `gen_auth_on_custom` — generated Authorization **and** custom headers (conflicting pattern).
+   - `principal_missing` — user (or Automated Process / DWU) has no External Credential principal access.
+   - `principal_unknown` / `unknown` — probe missed. **Never fake healthy.**
+3. **Never returned:** Consumer Secret, password, `ParameterValue`, Authorization values, `Metadata` blob.
+4. If `availability: unknown`, say the Tooling/list probe missed — do not guess the header formula.
+5. Auth repair is Brutus/human in Setup. Agents do not invent a Connected App.
+
+## Flow callout before Activate?
+
+1. `run_preflight` / `bluechip preflight --user <username|AutomatedProcess> [--fields Object.Field,…]`.
+   Report FLS missing Read vs missing Edit separately, plus NC principal / 401-class diagnoses.
+2. `get_apex_types` / `bluechip types [IN_… OUT_2XX …]` for Flow Assignment property paths. Do not invent fields.
+3. `get_callout_pack` / `bluechip callout-pack <FlowApiName>` — one hand-off (Flow identity + auth slice + types + ApexLog ids). Unknown slices keep a reason.
+4. **Do not Activate.** Boundary debug: tell the human `bluechip scratchpad --boundary` (prints `bluechip logs --follow` beside `wrangler tail`) and `bluechip trace start` (confirm-gated CLI). Chip stays ambient.
 
 ## FLS for an integration user?
 

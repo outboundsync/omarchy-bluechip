@@ -68,7 +68,7 @@ Copy pack: `bluechip incident | wl-copy`. Optional Hyprland binds and scratchpad
 
 ## Common jobs
 
-Primary verbs: `bluechip help`. Advanced + stubs: `bluechip help --all`.
+Primary verbs: `bluechip help`. Advanced: `bluechip help --all`.
 Product SoT: [docs/UX-PASS.md](docs/UX-PASS.md).
 
 | Job | Command |
@@ -77,6 +77,7 @@ Product SoT: [docs/UX-PASS.md](docs/UX-PASS.md).
 | Pin an org | `bluechip orgs` then `pin <alias>` |
 | What's on fire | `bluechip incident` (or `limits` / `flows`) |
 | Hand-off for an agent | `bluechip incident \| wl-copy` |
+| Callout 401 / Flow types | `bluechip callout-auth` · `types` · `callout-pack <Flow>` |
 | Confirm-gated debug | `bluechip trace start` then `logs --follow` |
 
 Pipes: `bluechip context | wl-copy` · `bluechip incident --json | jq .signal`

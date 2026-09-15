@@ -120,9 +120,9 @@ else
   ok "unrecognized clipboard refused"
 fi
 
-printf '%s\n' "types still stub"
-TYPES="$("$BLUECHIP" --no-color types 2>/dev/null)" || true
-[[ "$TYPES" == *SHIP-BACKLOG* ]] && ok "types stub points at backlog" || bad "types stub missing backlog"
+printf '%s\n' "types is a real verb (no longer a stub)"
+TYPES_HELP="$("$BLUECHIP" --no-color types --help 2>/dev/null)" || true
+[[ "$TYPES_HELP" == *HTTP\ Callout* || "$TYPES_HELP" == *Apex-defined* ]] && ok "types help is the explorer" || bad "types help: $TYPES_HELP"
 
 printf '%s\n' "desk + bar --all — per-org chrome, pin confirm on cross"
 DESK_HOME="$WORKDIR/home-desk"

@@ -268,7 +268,9 @@ Do not say “Tooling” until a Tooling call exists.
 | `sf org list` / `sf org list limits` | limits pulse | **yes** (limits miss → unknown, not 0% green) |
 | `sf data query` (SOQL / REST) | Organization, FlowInterview, SetupAuditTrail, ApexLog, hygiene aggregates | **yes** (+ User, PermissionSet*, ObjectPermissions, FieldPermissions, EventLogFile) |
 | `sf sobject describe` | probe-before-invent / FLS | **yes** (hygiene, before COUNT) |
-| Tooling `NamedCredential` / `ExternalCredential` | NC inspector | **yes** (safe fields + parameter *counts*; never secrets) |
+| Tooling `NamedCredential` / `ExternalCredential` | NC inspector + callout-auth doctor | **yes** (safe fields + parameter *counts* + 401-class diagnoses; never secrets) |
+| Tooling `ApexClass` (Name / SymbolTable / Body) | HTTP Callout / Apex-defined types | **yes** (size-capped, neutralized; no deploy) |
+| SOQL `ExternalCredentialPrincipalAccess` / `SetupEntityAccess` | principal access for DWU / Automated Process | **best-effort** — miss → `principal_unknown` |
 | Tooling `TraceFlag` / `DebugLevel` | debug-before-activate | **yes** (status read; start/stop confirm-gated CLI) |
 | Tooling `FlowDefinition` | Flow replay | **yes** (clipboard/context; not full replay) |
 | SOQL FieldPermissions / ObjectPermissions | FLS matrix | **yes** (read + `fls-propose` diff) |

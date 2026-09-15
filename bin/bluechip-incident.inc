@@ -278,17 +278,22 @@ compute_incident() {
 }
 
 cmd_incident() {
-  local want_json=0
+  local want_json=0 callout=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --json) want_json=1; shift ;;
+      --callout)
+        callout="${2:-}"
+        shift 2
+        ;;
+      --callout=*) callout="${1#*=}"; shift ;;
       help|-h|--help)
         cat <<EOF
 ${BOLD}bluechip incident${RESET} — one object: signal + limits + Flow faults + NC summary + logs
 
-  ${CYAN}incident${RESET} [--json]
+  ${CYAN}incident${RESET} [--json] [--callout <FlowApiName>]
       Same builder as ${CYAN}doctor --json${RESET} and MCP ${CYAN}get_incident${RESET}.
-      Display-only — not write authority.
+      ${CYAN}--callout${RESET} attaches a Flow callout pack (hand-off, not write authority).
 
   ${DIM}bluechip incident | wl-copy${RESET}
   ${DIM}bluechip incident --json | jq .signal${RESET}
@@ -299,6 +304,15 @@ EOF
     esac
   done
   [[ "${WANT_JSON:-0}" -eq 1 ]] && want_json=1
+
+  if [[ -n "$callout" ]]; then
+    if ! soql_api_name_ok "$callout"; then
+      die "invalid --callout Flow API name"
+    fi
+    # Dedicated pack is the SoT; incident --callout is an alias.
+    cmd_callout_pack ${want_json:+--json} "$callout"
+    return $?
+  fi
 
   local h
   h="$(compute_incident)" || h="$(probe_error_json transient "incident pack failed")"

@@ -15,6 +15,9 @@ bluechip scratchpad — Hyprland special workspace for a live org shell
 
   scratchpad           Toggle special:${WORKSPACE}; spawn logs --follow if missing
   scratchpad --sf      Spawn/focus an sf + jq session instead of log tail
+  scratchpad --boundary
+                       Print the two commands for Worker + org boundary debug
+                       (chip stays ambient; no QML)
   scratchpad --dry-run Print the spawn command (no Hyprland required)
   scratchpad --print-bind
                        Print a Hyprland bind line
@@ -34,6 +37,15 @@ while [[ $# -gt 0 ]]; do
     --dry-run|--dry) DRY=1; shift ;;
     --print-bind)
       printf 'bind = SUPER SHIFT, B, exec, bluechip-scratchpad\n'
+      exit 0
+      ;;
+    --boundary)
+      cat <<EOF
+# Boundary desk — chip stays ambient. No QML.
+# Scratchpad tails org ApexLog; wrangler tails the Worker.
+${BLUECHIP_BIN} logs --follow
+wrangler tail
+EOF
       exit 0
       ;;
     help|-h|--help) usage; exit 0 ;;
