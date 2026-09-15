@@ -1,0 +1,47 @@
+/* Bluechip — Waybar chip styling.
+ *
+ * Append to ~/.config/waybar/style.css (or @import it). It inherits the bar's
+ * font from Omarchy's active theme; only colors/spacing are set here so the
+ * PROD/SANDBOX signal is unmistakable in any theme.
+ *
+ * Classes emitted by `bluechip bar`:
+ *   .prod / .sandbox   — environment
+ *   .ok / .warn / .crit — peak limit severity
+ */
+
+#custom-bluechip {
+  padding: 0 10px;
+  margin: 0 2px;
+  border-radius: 8px;
+}
+
+/* PROD: quiet by default — you should barely notice it until a limit bites. */
+#custom-bluechip.prod {
+  color: #cdd6f4;
+}
+
+/* SANDBOX: loud and impossible to mistake for prod. */
+#custom-bluechip.sandbox {
+  background-color: #f9e2af;   /* amber */
+  color: #1e1e2e;
+  font-weight: bold;
+}
+
+/* Severity — amber then red as utilization climbs. */
+#custom-bluechip.prod.warn { color: #f9e2af; }
+#custom-bluechip.prod.crit {
+  background-color: #f38ba8;   /* red */
+  color: #1e1e2e;
+  font-weight: bold;
+}
+
+/* In a sandbox the amber background stays; escalate text/box on crit. */
+#custom-bluechip.sandbox.crit {
+  background-color: #eba0ac;
+  color: #1e1e2e;
+}
+
+/* Unknown / not-logged-in — muted. */
+#custom-bluechip.unknown {
+  color: #6c7086;
+}

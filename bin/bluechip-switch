@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# bluechip-switch — pick a Salesforce org from a dmenu and pin it for bluechip.
+# Bound to the Waybar chip's on-click. Uses whatever launcher is on the system.
+set -o pipefail
+
+bluechip=bluechip
+command -v "$bluechip" >/dev/null 2>&1 || bluechip="$(dirname "$0")/bluechip"
+
+# Gather aliases from sf.
+orgs="$(sf org list --json 2>/dev/null | jq -r '
+  ([.result.nonScratchOrgs?, .result.sandboxes?, .result.scratchOrgs?, .result.devHubs?]
+   | map(.//[]) | add) | .[] | select(.alias != null and .alias != "") | .alias' | sort -u)"
+
+[[ -z "$orgs" ]] && { command -v notify-send >/dev/null && notify-send "Bluechip" "No sf-authed orgs. Run: sf org login web"; exit 0; }
+
+# Pick a dmenu-style launcher (Omarchy ships walker; fall back through the usual suspects).
+pick=""
+menu() { printf '%s\n' "$orgs"; }
+if   command -v walker >/dev/null 2>&1; then pick="$(menu | walker --dmenu -p 'Pin org')"
+elif command -v fuzzel >/dev/null 2>&1; then pick="$(menu | fuzzel --dmenu -p 'Pin org: ')"
+elif command -v wofi   >/dev/null 2>&1; then pick="$(menu | wofi --dmenu -p 'Pin org')"
+elif command -v rofi   >/dev/null 2>&1; then pick="$(menu | rofi -dmenu -p 'Pin org')"
+else "${TERMINAL:-xterm}" -e "$bluechip" orgs; exit 0
+fi
+
+[[ -n "$pick" ]] || exit 0
+"$bluechip" pin "$pick" >/dev/null 2>&1
+# Force an immediate chip refresh.
+pkill -RTMIN+8 waybar 2>/dev/null || true
+command -v notify-send >/dev/null && notify-send "Bluechip" "Pinned $pick"

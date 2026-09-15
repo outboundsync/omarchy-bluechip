@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="573" height="473" viewBox="0 0 573 473" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="13.5">
+<rect width="573" height="473" rx="12" fill="#1e1e2e"/>
+<circle cx="22" cy="26" r="6" fill="#f38ba8"/>
+<circle cx="42" cy="26" r="6" fill="#f9e2af"/>
+<circle cx="62" cy="26" r="6" fill="#a6e3a1"/>
+<text x="286.5" y="30" fill="#6c7086" text-anchor="middle" font-size="12">bluechip doctor — acme-prod</text>
+<text x="22.0" y="52" fill="#89b4fa" font-weight="700" xml:space="preserve">   ___  _           _    _</text>
+<text x="22.0" y="71" fill="#cdd6f4" font-weight="400" xml:space="preserve">  | _ )| |_  _ ___ | |_ (_)_ __</text>
+<text x="22.0" y="90" fill="#cdd6f4" font-weight="400" xml:space="preserve">  | _ \| | || / -_)| &#x27; \| | &#x27;_ \</text>
+<text x="22.0" y="109" fill="#cdd6f4" font-weight="400" xml:space="preserve">  |___/|_|\_,_\___||_||_|_| .__/</text>
+<text x="22.0" y="128" fill="#cdd6f4" font-weight="400" xml:space="preserve">                          |_|</text>
+<text x="22.0" y="147" fill="#cdd6f4" font-weight="400" xml:space="preserve">  </text>
+<text x="38.8" y="147" fill="#cdd6f4" font-weight="700" xml:space="preserve">acme-prod</text>
+<text x="114.4" y="147" fill="#cdd6f4" font-weight="400" xml:space="preserve">   </text>
+<text x="139.6" y="147" fill="#f38ba8" font-weight="700" xml:space="preserve"> PROD </text>
+<text x="22.0" y="166" fill="#cdd6f4" font-weight="400" xml:space="preserve">  </text>
+<text x="38.8" y="166" fill="#6c7086" font-weight="400" xml:space="preserve">Enterprise Edition · NA224 · 00Dff0000000ACMEEAA</text>
+<text x="22.0" y="185" fill="#cdd6f4" font-weight="400" xml:space="preserve">  </text>
+<text x="38.8" y="185" fill="#9399b2" font-weight="400" xml:space="preserve">harris@acme.com</text>
+<text x="22.0" y="223" fill="#cdd6f4" font-weight="400" xml:space="preserve">   DailyApiRequests               </text>
+<text x="307.6" y="223" fill="#f9e2af" font-weight="400" xml:space="preserve">■■■■■■■■■■■■■■</text>
+<text x="425.2" y="223" fill="#6c7086" font-weight="400" xml:space="preserve">□□□□</text>
+<text x="458.8" y="223" fill="#cdd6f4" font-weight="400" xml:space="preserve">   82%</text>
+<text x="22.0" y="242" fill="#cdd6f4" font-weight="400" xml:space="preserve">   DataStorageMB                  </text>
+<text x="307.6" y="242" fill="#f38ba8" font-weight="400" xml:space="preserve">■■■■■■■■■■■■■■■■■</text>
+<text x="450.4" y="242" fill="#6c7086" font-weight="400" xml:space="preserve">□</text>
+<text x="458.8" y="242" fill="#cdd6f4" font-weight="400" xml:space="preserve">   95%</text>
+<text x="22.0" y="261" fill="#cdd6f4" font-weight="400" xml:space="preserve">   FileStorageMB                  </text>
+<text x="307.6" y="261" fill="#a6e3a1" font-weight="400" xml:space="preserve">■■■■■</text>
+<text x="349.6" y="261" fill="#6c7086" font-weight="400" xml:space="preserve">□□□□□□□□□□□□□</text>
+<text x="458.8" y="261" fill="#cdd6f4" font-weight="400" xml:space="preserve">   31%</text>
+<text x="22.0" y="280" fill="#cdd6f4" font-weight="400" xml:space="preserve">   DailyAsyncApexExecutions       </text>
+<text x="307.6" y="280" fill="#f9e2af" font-weight="400" xml:space="preserve">■■■■■■■■■■■■■</text>
+<text x="416.8" y="280" fill="#6c7086" font-weight="400" xml:space="preserve">□□□□□</text>
+<text x="458.8" y="280" fill="#cdd6f4" font-weight="400" xml:space="preserve">   76%</text>
+<text x="22.0" y="299" fill="#cdd6f4" font-weight="400" xml:space="preserve">   DailyBulkApiBatches            </text>
+<text x="307.6" y="299" fill="#6c7086" font-weight="400" xml:space="preserve">□□□□□□□□□□□□□□□□□□</text>
+<text x="458.8" y="299" fill="#cdd6f4" font-weight="400" xml:space="preserve">    5%</text>
+<text x="22.0" y="318" fill="#cdd6f4" font-weight="400" xml:space="preserve">   HourlyODataCallout             </text>
+<text x="307.6" y="318" fill="#f9e2af" font-weight="400" xml:space="preserve">■■■■■■■■■■■■■■■</text>
+<text x="433.6" y="318" fill="#6c7086" font-weight="400" xml:space="preserve">□□□</text>
+<text x="458.8" y="318" fill="#cdd6f4" font-weight="400" xml:space="preserve">   85%</text>
+<text x="22.0" y="337" fill="#cdd6f4" font-weight="400" xml:space="preserve">   DailyStandardVolumePlatformEve </text>
+<text x="307.6" y="337" fill="#6c7086" font-weight="400" xml:space="preserve">□□□□□□□□□□□□□□□□□□</text>
+<text x="458.8" y="337" fill="#cdd6f4" font-weight="400" xml:space="preserve">    1%</text>
+<text x="22.0" y="375" fill="#cdd6f4" font-weight="400" xml:space="preserve">   </text>
+<text x="47.2" y="375" fill="#9399b2" font-weight="400" xml:space="preserve">Flow faults/paused</text>
+<text x="198.4" y="375" fill="#cdd6f4" font-weight="400" xml:space="preserve">  </text>
+<text x="215.2" y="375" fill="#f38ba8" font-weight="700" xml:space="preserve">3</text>
+<text x="22.0" y="394" fill="#cdd6f4" font-weight="400" xml:space="preserve">   </text>
+<text x="47.2" y="394" fill="#9399b2" font-weight="400" xml:space="preserve">Last setup change</text>
+<text x="190.0" y="394" fill="#cdd6f4" font-weight="400" xml:space="preserve">   2026-09-14 · Brutus Admin · Manage Users</text>
+<text x="22.0" y="432" fill="#cdd6f4" font-weight="400" xml:space="preserve">   </text>
+<text x="47.2" y="432" fill="#6c7086" font-weight="400" xml:space="preserve">snapshot 0s ago · bluechip 1.0.0 · read-only · unofficial</text>
+</svg>

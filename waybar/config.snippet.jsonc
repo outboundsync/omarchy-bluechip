@@ -1,0 +1,20 @@
+// Bluechip — Waybar module. Add "custom/bluechip" to a modules array in
+// ~/.config/waybar/config.jsonc (e.g. modules-right), then paste this object
+// anywhere at the top level of that same file.
+//
+//   "modules-right": ["custom/bluechip", "clock", ...],
+//
+// `install.sh` can do this for you.
+{
+  "custom/bluechip": {
+    "exec": "bluechip bar",
+    "return-type": "json",
+    "interval": 300,          // refresh cadence; bluechip caches so this is cheap
+    "signal": 8,              // `pkill -RTMIN+8 waybar` forces an immediate refresh
+    "format": "{}",
+    "on-click": "bluechip-switch",                       // pick / pin an org (dmenu)
+    "on-click-right": "bluechip refresh && pkill -RTMIN+8 waybar",
+    "on-click-middle": "$TERMINAL -e bluechip doctor",   // full org-vitals card
+    "tooltip": true
+  }
+}
