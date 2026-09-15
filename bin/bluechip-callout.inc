@@ -175,47 +175,45 @@ _ca_principal_access() {
       echo '{"availability":"unknown","reason":"'"$why"'","grants":[]}'
       return 0
     }
-  jq -c --argjson acc "$raw" --argjson psa "$psa" '
-    {
-      availability: "ok",
-      reason: null,
-      grants: [
-        ($acc.result.records // [])[]? | {
-          permissionSetId: (.ParentId // null),
-          principalId: (.ExternalCredentialPrincipalId // .SetupEntityId // null)
-        }
-      ],
-      assignedPermissionSetIds: [($psa.result.records // [])[]? | .PermissionSetId]
-    }'
+  local acc_recs psa_ids
+  acc_recs="$(jq -c '[.result.records[]? | {permissionSetId:(.ParentId // null), principalId:(.ExternalCredentialPrincipalId // .SetupEntityId // null)}]' <<<"$raw")" \
+    || acc_recs='[]'
+  psa_ids="$(jq -c '[.result.records[]? | .PermissionSetId]' <<<"$psa")" || psa_ids='[]'
+  jq -nc --argjson grants "$acc_recs" --argjson ids "$psa_ids" \
+    '{availability:"ok", reason:null, grants:$grants, assignedPermissionSetIds:$ids}'
 }
 
 _ca_merge_principals() {
   local diagnoses="$1" access="$2" principals="$3"
-  jq -c --argjson d "$diagnoses" --argjson a "$access" --argjson p "$principals" '
-    def granted($pid):
-      ($a.assignedPermissionSetIds // []) as $ps
-      | [($a.grants // [])[]? | select(.principalId == $pid and ((.permissionSetId as $x | $ps | index($x)) != null))] | length > 0;
+  jq -c --arg a "$access" --arg p "$principals" '
+    ($a | fromjson) as $a
+    | ($p | fromjson) as $p
+    | . as $d
+    | def granted($pid):
+        ($a.assignedPermissionSetIds // []) as $ps
+        | [($a.grants // [])[]? | select(.principalId == $pid and ((.permissionSetId as $x | $ps | index($x)) != null))] | length > 0;
     if $a.availability != "ok" then
-      ($d.external // []) | map(.reasons = ((.reasons + ["principal_unknown"]) | unique))
-      | {named: $d.named, external: .}
+      {named: ($d.named // []), external: (($d.external // []) | map(.reasons = ((.reasons + ["principal_unknown"]) | unique)))}
     else
-      ($d.external // []) | map(
-        . as $row
-        | ([ $p.records[]? | select((.name as $n | $row.principals | index($n)) != null) | .id ]) as $ids
-        | if ($row.principals | length) == 0 then
-            .reasons = ((.reasons + ["principal_unknown"]) | unique)
-          elif ($ids | length) == 0 then
-            .
-          elif ([ $ids[] | granted(.) ] | any) then
-            .
-          else
-            .reasons = ((.reasons + ["principal_missing"]) | unique)
-            | .likely401 = true
-          end
-      )
-      | {named: $d.named, external: .}
+      {
+        named: ($d.named // []),
+        external: (($d.external // []) | map(
+          . as $row
+          | [($p.records // [])[]? | select((.name as $n | ($row.principals // []) | index($n)) != null) | .id] as $ids
+          | if (($row.principals // []) | length) == 0 then
+              .reasons = ((.reasons + ["principal_unknown"]) | unique)
+            elif ($ids | length) == 0 then
+              .
+            elif ([ $ids[]? | granted(.) ] | any) then
+              .
+            else
+              .reasons = ((.reasons + ["principal_missing"]) | unique)
+              | .likely401 = true
+            end
+        ))
+      }
     end
-  '
+  ' <<<"$diagnoses"
 }
 
 compute_callout_auth() {
@@ -225,9 +223,10 @@ compute_callout_auth() {
   local nc_h diagnoses userblob='null' access='{"availability":"skipped","reason":"no_user","grants":[]}'
   nc_h="$(compute_named_creds)" || nc_h="$(probe_error_json transient "named credential inspect failed")"
 
+  nc_h="$(jq -c . <<<"$nc_h")" || nc_h="$(probe_error_json transient "named credential inspect failed")"
   if [[ "$(jq -r '.availability' <<<"$nc_h")" == "unknown" ]]; then
-    jq -c --argjson nc "$nc_h" '
-      $nc + {
+    jq -c '
+      . + {
         diagnoses: [{
           apiName: null,
           kind: "unknown",
@@ -239,8 +238,8 @@ compute_callout_auth() {
           headerAvailability: "unknown",
           principals: []
         }],
-        principalAccess: {availability:"unknown", reason:($nc.error.code // "unknown"), user:null, grants:[]}
-      }'
+        principalAccess: {availability:"unknown", reason:(.error.code // "unknown"), user:null, grants:[]}
+      }' <<<"$nc_h" || return 1
     return 0
   fi
 
@@ -284,9 +283,15 @@ compute_callout_auth() {
     fi
   fi
 
-  jq -n --argjson nc "$nc_h" --argjson d "$diagnoses" --argjson user "$userblob" --argjson acc "$access" '
-    ($d.named + $d.external) as $all
-    | $nc + {
+  diagnoses="$(jq -c . <<<"$diagnoses" 2>/dev/null)" || diagnoses='{"named":[],"external":[]}'
+  access="$(jq -c . <<<"$access" 2>/dev/null)" || access='{"availability":"unknown","reason":"invalid","grants":[]}'
+  userblob="$(jq -c . <<<"$userblob" 2>/dev/null)" || userblob='null'
+  jq -c --arg d "$diagnoses" --arg user "$userblob" --arg acc "$access" '
+    ($d | fromjson) as $d
+    | ($user | fromjson) as $user
+    | ($acc | fromjson) as $acc
+    | (([$d.named[]?] + [$d.external[]?])) as $all
+    | . + {
         diagnoses: $all,
         principalAccess: {
           availability: $acc.availability,
@@ -295,7 +300,7 @@ compute_callout_auth() {
           grants: ($acc.grants // [])
         }
       }
-  ' | redact_secrets_json
+  ' <<<"$nc_h" | redact_secrets_json
 }
 
 cmd_callout_auth() {
@@ -474,7 +479,7 @@ compute_types() {
     fi
     list_raw="$(_types_fetch_details "$inlist")" && avail="ok" || why="$(classify_sf_error "${list_raw:-}")"
   else
-    list_raw="$(_types_discover_query")" && avail="ok" || why="$(classify_sf_error "${list_raw:-}")"
+    list_raw="$(_types_discover_query)" && avail="ok" || why="$(classify_sf_error "${list_raw:-}")"
     if [[ "$avail" == "ok" ]]; then
       local discovered=() inlist
       mapfile -t discovered < <(jq -r '.result.records[]?.Name // empty' <<<"$list_raw")
@@ -674,8 +679,12 @@ compute_callout_pack() {
   # Name-token overlap with NC api names (best-effort, never invent Setup menus).
   if [[ "$(jq -r 'length' <<<"$nc_link")" == "0" ]]; then
     nc_link="$(jq -c --arg n "$flow" '
-      [.namedCredentials.records[]? | select(($n | test(.apiName; "i")) or (.apiName | test($n; "i")))
-        | {apiName, source:"name_overlap"}]
+      [.namedCredentials.records[]? | select(.apiName != null) | . as $r
+        | select(
+            ($n | test($r.apiName; "i"))
+            or ($r.apiName | test($n; "i"))
+          )
+        | {apiName: $r.apiName, source:"name_overlap"}]
     ' <<<"$auth")"
     if [[ "$(jq -r 'length' <<<"$nc_link")" != "0" ]]; then
       nc_reason="name_overlap"

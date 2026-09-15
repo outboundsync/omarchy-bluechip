@@ -46,7 +46,7 @@ run() {
 printf '%s\n' "apex-parse — SymbolTable + Body, no secrets"
 PARSE="$(printf '%s\n' '{"classes":[{"Name":"IN_LeadSearch","Body":"public class IN_LeadSearch { public String company; public String password; }","SymbolTable":{"name":"IN_LeadSearch","properties":[{"name":"company","type":"String"}],"innerClasses":[]}}]}' \
   | python3 "$ROOT/bin/bluechip-apex-parse.py")"
-assert_json "$PARSE" '.classes[0].assignmentPaths[0].path' "company" "parser path company"
+assert_json "$PARSE" '.classes[0].assignmentPaths[0].path' "IN_LeadSearch.company" "parser path company"
 assert_json "$PARSE" '[.classes[0].properties[] | select(.name=="password")] | length' "0" "parser drops password property"
 
 printf '%s\n' "callout-auth — 401 classes"
@@ -83,7 +83,7 @@ TY="$(run "$W3/types" "$BLUECHIP" --no-color --refresh --json types 2>/dev/null)
 assert_json "$TY" '.availability' "ok" "types ok"
 assert_json "$TY" '[.classes[].name] | index("IN_LeadSearch") != null' "true" "discovered IN_LeadSearch"
 assert_json "$TY" '[.classes[] | select(.name=="IN_LeadSearch") | .assignmentPaths[]?.path] | index("IN_LeadSearch.company") != null' "true" "assignment path company"
-assert_json "$TY" '[.classes[] | select(.name=="OUT_2XX") | .kind]' "http_callout_2xx" "OUT_2XX kind"
+assert_json "$TY" '[.classes[] | select(.name=="OUT_2XX") | .kind] | .[0]' "http_callout_2xx" "OUT_2XX kind"
 if [[ "$TY" == *SHOULD_NEVER* || "$TY" == *"Bearer"* ]]; then
   bad "types leaked a secret from Body"
 else

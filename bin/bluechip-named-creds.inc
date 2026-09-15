@@ -366,6 +366,7 @@ cmd_named_creds() {
       *) break ;;
     esac
   done
+  [[ "${WANT_JSON:-0}" -eq 1 ]] && want_json=1
   if [[ $doctor -eq 1 ]]; then
     local args=()
     [[ $want_json -eq 1 ]] && args+=(--json)
