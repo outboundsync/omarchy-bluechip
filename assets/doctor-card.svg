@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="573" height="473" viewBox="0 0 573 473" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="13.5">
-<rect width="573" height="473" rx="12" fill="#1e1e2e"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="573" height="492" viewBox="0 0 573 492" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="13.5">
+<rect width="573" height="492" rx="12" fill="#1e1e2e"/>
 <circle cx="22" cy="26" r="6" fill="#f38ba8"/>
 <circle cx="42" cy="26" r="6" fill="#f9e2af"/>
 <circle cx="62" cy="26" r="6" fill="#a6e3a1"/>
@@ -44,12 +44,18 @@
 <text x="307.6" y="337" fill="#6c7086" font-weight="400" xml:space="preserve">□□□□□□□□□□□□□□□□□□</text>
 <text x="458.8" y="337" fill="#cdd6f4" font-weight="400" xml:space="preserve">    1%</text>
 <text x="22.0" y="375" fill="#cdd6f4" font-weight="400" xml:space="preserve">   </text>
-<text x="47.2" y="375" fill="#9399b2" font-weight="400" xml:space="preserve">Flow faults/paused</text>
-<text x="198.4" y="375" fill="#cdd6f4" font-weight="400" xml:space="preserve">  </text>
-<text x="215.2" y="375" fill="#f38ba8" font-weight="700" xml:space="preserve">2</text>
+<text x="47.2" y="375" fill="#9399b2" font-weight="400" xml:space="preserve">Data health</text>
+<text x="139.6" y="375" fill="#cdd6f4" font-weight="400" xml:space="preserve">        </text>
+<text x="206.8" y="375" fill="#a6e3a1" font-weight="700" xml:space="preserve">B</text>
+<text x="215.2" y="375" fill="#cdd6f4" font-weight="400" xml:space="preserve"> </text>
+<text x="223.6" y="375" fill="#9399b2" font-weight="400" xml:space="preserve">(81/100)</text>
 <text x="22.0" y="394" fill="#cdd6f4" font-weight="400" xml:space="preserve">   </text>
-<text x="47.2" y="394" fill="#9399b2" font-weight="400" xml:space="preserve">Last setup change</text>
-<text x="190.0" y="394" fill="#cdd6f4" font-weight="400" xml:space="preserve">   2026-09-14 · Brutus Admin · Manage Users</text>
-<text x="22.0" y="432" fill="#cdd6f4" font-weight="400" xml:space="preserve">   </text>
-<text x="47.2" y="432" fill="#6c7086" font-weight="400" xml:space="preserve">snapshot 0s ago · bluechip 1.0.0 · read-only · unofficial</text>
+<text x="47.2" y="394" fill="#9399b2" font-weight="400" xml:space="preserve">Flow faults/paused</text>
+<text x="198.4" y="394" fill="#cdd6f4" font-weight="400" xml:space="preserve">  </text>
+<text x="215.2" y="394" fill="#f38ba8" font-weight="700" xml:space="preserve">2</text>
+<text x="22.0" y="413" fill="#cdd6f4" font-weight="400" xml:space="preserve">   </text>
+<text x="47.2" y="413" fill="#9399b2" font-weight="400" xml:space="preserve">Last setup change</text>
+<text x="190.0" y="413" fill="#cdd6f4" font-weight="400" xml:space="preserve">   2026-09-14 · Brutus Admin · Manage Users</text>
+<text x="22.0" y="451" fill="#cdd6f4" font-weight="400" xml:space="preserve">   </text>
+<text x="47.2" y="451" fill="#6c7086" font-weight="400" xml:space="preserve">snapshot 0s ago · bluechip 1.0.0 · read-only · unofficial</text>
 </svg>

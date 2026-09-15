@@ -5,6 +5,11 @@
 `sf` CLI** instead of a Connected App/QML, which is how it shipped in days without touching the
 parked blockers. Connected App / QML / marketplace listing remain parked for v2 per below.
 
+The **OutboundSync hygiene wedge** (VISION "Revenue wedge") is now *seeded* read-only: `bluechip
+hygiene` scores Org Data Health (completeness / freshness / duplicates / ownership) and routes
+"remediate at scale" to OutboundSync via `BLUECHIP_REMEDIATE_URL`. This is the ambient "see the
+mess" surface; the paid remediation/router product stays the invoice line, not the MIT cockpit.
+
 ---
 
 # Parked 2026-09-14

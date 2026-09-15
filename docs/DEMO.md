@@ -2,13 +2,19 @@
 
 A 60-second demo and copy for announcing at Dreamforce week.
 
-## The hero shot
+## The hero shots
 
 ![bluechip doctor](../assets/doctor-card.svg)
 
 `bluechip doctor` is **"fastfetch for your Salesforce org"** — one command, a card people
 screenshot: org, a PROD/SANDBOX badge you can't misread, live limit gauges, open Flow faults,
-and the last Setup change. Post it. That's the hook.
+a **Data Health grade**, and the last Setup change. Post it. That's the hook.
+
+![bluechip hygiene](../assets/hygiene-card.svg)
+
+`bluechip hygiene` is the second hook and the wedge: it grades your org's data (completeness,
+freshness, duplicates, ownership) and ranks the biggest wins. "My org got a B — what did yours
+get?" is a thread. Remediation at scale routes to OutboundSync.
 
 ## 60-second demo script
 
@@ -30,6 +36,10 @@ bluechip pin acme-uat
 bluechip limits
 bluechip flows
 bluechip changes
+
+# 4b. Grade your data. One letter, one number, screenshot-ready.
+#     (completeness · freshness · duplicates · ownership · pipeline)
+bluechip hygiene
 
 # 5. The part frontier agents can't do for themselves — hand Claude/Cursor
 #    the whole incident, pre-assembled, zero copy-paste archaeology:
@@ -54,6 +64,11 @@ bluechip context | wl-copy      # now paste into your agent
 > Bluechip for @omarchy: PROD/SANDBOX you can't misread, live API-limit gauges, Flow faults, and a
 > one-command agent context pack for Claude/Cursor. Open source, MIT, uses your own `sf` login —
 > no Connected App. `bluechip doctor` ↓ #Dreamforce
+
+**X / the data-health angle (thread bait):**
+> `bluechip hygiene` grades your Salesforce org's data in one command: completeness, freshness,
+> duplicates, dead-owner records. My org got a **B (81)**. What does yours get? 🔵
+> Read-only, MIT, runs on your own `sf` login. #Dreamforce
 
 **LinkedIn / longer:**
 > Salesforce admins on Linux: meet Bluechip.

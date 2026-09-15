@@ -14,7 +14,7 @@
     "format": "{}",
     "on-click": "bluechip-switch",                       // pick / pin an org (dmenu)
     "on-click-right": "bluechip refresh && pkill -RTMIN+8 waybar",
-    "on-click-middle": "$TERMINAL -e bluechip doctor",   // full org-vitals card
+    "on-click-middle": "${TERMINAL:-alacritty} -e bluechip doctor",   // full org-vitals card
     "tooltip": true
   }
 }
