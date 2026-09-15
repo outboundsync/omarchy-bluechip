@@ -1,0 +1,9 @@
+{
+  "status": 0,
+  "result": {
+    "id": "00D000000000001AAA",
+    "alias": "prod-org",
+    "username": "admin@prod.example.com",
+    "instanceUrl": "https://prod.my.salesforce.com"
+  }
+}

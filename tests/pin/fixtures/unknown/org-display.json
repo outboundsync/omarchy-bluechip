@@ -1,0 +1,9 @@
+{
+  "status": 0,
+  "result": {
+    "id": "00D000000000003AAA",
+    "alias": "mystery",
+    "username": "admin@mystery.example.com",
+    "instanceUrl": "https://mystery.my.salesforce.com"
+  }
+}

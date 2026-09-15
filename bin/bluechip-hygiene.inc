@@ -432,7 +432,7 @@ hygiene_org_blob() {
     return
   fi
   jq -n --arg id "$(org_id "$snap")" --arg st "$(sandbox_state "$snap")" \
-    '{id: (if $id == "?" then null else $id end), sandboxState:$st}'
+    '{id: (if $id == "unknown" then null else $id end), sandboxState:$st}'
 }
 
 # Persist only ok|partial with measuredAt and no transient/timeout/auth error.
@@ -608,8 +608,9 @@ cmd_hygiene() {
       ((.dimensions.pipeline.availability//"")|tostring), ((.dimensions.pipeline.score//"")|tostring)
     ] | @tsv' <<<"$h" \
   | while IFS=$'\t' read -r api label oavail reason total oscore cav csc fav fsc oav osc dav dsc pav psc; do
+      label="$(neutralize_plaintext "$label" 80)"
       if [[ "$oavail" != "ok" ]]; then
-        printf '   %-20s %sunknown%s %s(%s)%s\n' "$label" "$GREY" "$RESET" "$DIM" "${reason:-unknown}" "$RESET"
+        printf '   %-20s %sunknown%s %s(%s)%s\n' "$label" "$GREY" "$RESET" "$DIM" "$(neutralize_plaintext "${reason:-unknown}" 64)" "$RESET"
         continue
       fi
       if [[ "$total" == "0" ]]; then
@@ -630,7 +631,9 @@ cmd_hygiene() {
 
   if jq -e '.wins | length > 0' <<<"$h" >/dev/null; then
     printf '\n  %sBiggest measured gaps%s\n' "$BOLD" "$RESET"
-    jq -r '.wins[] | "   • \(.label)"' <<<"$h"
+    jq -r '.wins[] | .label' <<<"$h" | while IFS= read -r w; do
+      printf '   • %s\n' "$(neutralize_plaintext "$w" 200)"
+    done
   fi
 
   if [[ -n "${BLUECHIP_REMEDIATE_URL:-}" ]]; then

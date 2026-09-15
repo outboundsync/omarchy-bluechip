@@ -1,0 +1,10 @@
+{
+  "status": 0,
+  "result": [
+    {
+      "name": "DailyApiRequests",
+      "max": 10000,
+      "remaining": 9000
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "status": 0,
+  "result": {
+    "id": "00D000000000002AAA",
+    "alias": "sbx",
+    "username": "admin@sbx.example.com",
+    "instanceUrl": "https://sbx.my.salesforce.com"
+  }
+}
