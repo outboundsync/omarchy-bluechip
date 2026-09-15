@@ -9,7 +9,7 @@
 #   orgs              List sf-authed orgs; mark the pinned one
 #   pin [alias|-]     Pin an org for bluechip (— clears the pin, uses sf default)
 #   limits            Full limits table (amber/red)
-#   hygiene [--json]  Org Data Health score: completeness, freshness, dupes, owners
+#   hygiene [--json]  Read-only org data probe (measured / unknown; no grade unless measured)
 #   flows             Recent errored / paused Flow interviews (best-effort)
 #   changes           What changed recently (Setup Audit Trail)
 #   context           Paste-ready incident bundle for Claude / Cursor / any agent
@@ -23,7 +23,10 @@
 #   --no-color          Plain output
 set -o pipefail
 
-BLUECHIP_VERSION="1.0.0"
+BLUECHIP_VERSION="1.0.1"
+SF_BIN="${BLUECHIP_SF:-sf}"
+DUPE_GROUP_CAP="${BLUECHIP_DUPE_CAP:-200}"
+SNAPSHOT_ERROR=""
 
 # ---------------------------------------------------------------------------
 # Paths / config
@@ -34,6 +37,8 @@ CACHE_DIR="$STATE_DIR/cache"
 STATE_FILE="$STATE_DIR/state.json"
 SNAPSHOT_FILE="$CACHE_DIR/snapshot.json"
 WATCH_STATE="$CACHE_DIR/watch.json"
+HYGIENE_CACHE="$CACHE_DIR/hygiene.json"
+HYGIENE_ERROR_FILE="$CACHE_DIR/hygiene.error.json"
 
 # Cache freshness for `bar` / `doctor` so Waybar never blocks on a slow API call.
 CACHE_TTL="${BLUECHIP_CACHE_TTL:-120}"
@@ -70,6 +75,65 @@ RED=$(c 31); GREEN=$(c 32); YELLOW=$(c 33); BLUE=$(c 34); CYAN=$(c 36); GREY=$(c
 die() { printf '%s\n' "bluechip: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "missing dependency: $1"; }
 
+# 700 on the state dir, 600 on cache/credentials — first write, every write.
+ensure_state_dir() {
+  mkdir -p "$STATE_DIR" "$CACHE_DIR"
+  chmod 700 "$STATE_DIR" 2>/dev/null || true
+  chmod 700 "$CACHE_DIR" 2>/dev/null || true
+}
+
+write_secure() { # <path>  (reads stdin)
+  local path="$1" tmp
+  ensure_state_dir
+  tmp="${path}.tmp.$$"
+  cat > "$tmp" || { rm -f "$tmp"; return 1; }
+  chmod 600 "$tmp" 2>/dev/null || true
+  mv "$tmp" "$path"
+  chmod 600 "$path" 2>/dev/null || true
+}
+
+# Salesforce API names only — never interpolate unsanitized config into SOQL.
+soql_api_name_ok() { [[ "$1" =~ ^[A-Za-z][A-Za-z0-9_]{0,79}$ ]]; }
+soql_field_ref_ok() { [[ "$1" =~ ^[A-Za-z][A-Za-z0-9_]{0,79}(\.[A-Za-z][A-Za-z0-9_]{0,79})?$ ]]; }
+soql_filter_ok() {
+  local s="$1"
+  local re='^[A-Za-z0-9_.=<>!():[:space:]-]+$'
+  [[ -z "$s" ]] && return 0
+  [[ "$s" == *\'* || "$s" == *\"* || "$s" == *\\* || "$s" == *';'* ]] && return 1
+  [[ "$s" == *'--'* || "$s" == *'/*'* ]] && return 1
+  [[ "$s" =~ $re ]]
+}
+
+# Closed reason enum for probes. Raw Salesforce text is not a reason.
+classify_sf_error() {
+  local blob="${1:-}" name msg mix
+  if [[ -z "$blob" ]]; then echo transient; return; fi
+  name="$(jq -r '.name // .errorCode // .code // empty' <<<"$blob" 2>/dev/null || true)"
+  msg="$(jq -r '.message // empty' <<<"$blob" 2>/dev/null || true)"
+  mix="$(printf '%s %s' "$name" "$msg" | tr '[:upper:]' '[:lower:]')"
+  case "$name" in
+    INVALID_TYPE|INVALID_TYPE_ON_FIELD_IN_ENTITY) echo object_forbidden; return ;;
+    INVALID_FIELD) echo invalid_field; return ;;
+    INSUFFICIENT_ACCESS|INSUFFICIENT_ACCESS_OR_READONLY|CANNOT_QUERY) echo object_forbidden; return ;;
+  esac
+  if [[ "$mix" == *timeout* || "$name" == *TIMEOUT* ]]; then echo timeout; return; fi
+  if [[ "$mix" == *authenticat* || "$mix" == *'not logged'* || "$mix" == *'no default org'* \
+     || "$name" == "NoDefaultOrgFound" || "$name" == "NamedOrgNotFound" || "$name" == "AuthInfoError" ]]; then
+    echo unauthenticated; return
+  fi
+  if [[ "$mix" == *502* || "$mix" == *503* || "$mix" == *econnreset* || "$mix" == *enotfound* \
+     || "$mix" == *network* || "$mix" == *econnrefused* || "$name" == "TRANSIENT" \
+     || "$name" == "ENOTFOUND" || "$name" == "ECONNRESET" ]]; then
+    echo transient; return
+  fi
+  if [[ "$mix" == *insufficient* || "$mix" == *'not queryable'* || "$mix" == *'sobject type'* \
+     || "$mix" == *'invalid type'* || "$mix" == *'no such entity'* ]]; then
+    echo object_forbidden; return
+  fi
+  if [[ "$mix" == *'no such column'* || "$mix" == *'invalid field'* ]]; then echo invalid_field; return; fi
+  echo transient
+}
+
 # ---------------------------------------------------------------------------
 # Arg parsing (global options can appear anywhere)
 # ---------------------------------------------------------------------------
@@ -92,7 +156,13 @@ CMD="${1:-help}"; [[ $# -gt 0 ]] && shift || true
 # ---------------------------------------------------------------------------
 # sf plumbing
 # ---------------------------------------------------------------------------
-have_sf() { command -v sf >/dev/null 2>&1; }
+have_sf() {
+  if [[ "$SF_BIN" == */* ]]; then
+    [[ -x "$SF_BIN" ]]
+  else
+    command -v "$SF_BIN" >/dev/null 2>&1
+  fi
+}
 
 pinned_org() {
   [[ -f "$STATE_FILE" ]] || return 0
@@ -109,15 +179,27 @@ set_oflag() {
   [[ -n "$target" ]] && OFLAG=(-o "$target")
 }
 
+# Run `$SF_BIN <args> --json`. Echo the full CLI JSON. Return 0 iff .status==0.
+sf_try() {
+  local out
+  out="$("$SF_BIN" "$@" --json 2>/dev/null)" || {
+    if [[ -n "$out" ]] && jq -e . >/dev/null 2>&1 <<<"$out"; then
+      printf '%s\n' "$out"
+      return 1
+    fi
+    printf '%s\n' '{"status":1,"name":"TRANSIENT","message":"sf failed with no JSON"}'
+    return 1
+  }
+  local s; s="$(jq -r '.status // 0' <<<"$out" 2>/dev/null)"
+  printf '%s\n' "$out"
+  [[ "$s" == "0" ]]
+}
+
 # Run `sf <args> --json`; on success echo `.result`, else return non-zero.
 sf_json() {
-  local out status
-  out="$(sf "$@" --json 2>/dev/null)"; status=$?
-  [[ $status -eq 0 ]] || return $status
-  # sf sets .status non-zero on API errors even with exit 0 in some versions.
-  local s; s="$(jq -r '.status // 0' <<<"$out" 2>/dev/null)"
-  [[ "$s" == "0" ]] || return 1
-  jq -c '.result' <<<"$out"
+  local raw
+  raw="$(sf_try "$@")" || return 1
+  jq -c '.result' <<<"$raw"
 }
 
 # ---------------------------------------------------------------------------
@@ -127,39 +209,49 @@ snapshot_is_fresh() {
   [[ -f "$SNAPSHOT_FILE" ]] || return 1
   local age now mtime
   now=$(date +%s)
-  mtime=$(stat -f %m "$SNAPSHOT_FILE" 2>/dev/null || stat -c %Y "$SNAPSHOT_FILE" 2>/dev/null || echo 0)
+  # Linux `stat -f` is --file-system (succeeds with garbage). Prefer -c; macOS falls back to -f %m.
+  mtime=$(stat -c %Y "$SNAPSHOT_FILE" 2>/dev/null || stat -f %m "$SNAPSHOT_FILE" 2>/dev/null || echo 0)
   age=$(( now - mtime ))
   [[ $age -lt $CACHE_TTL ]]
 }
 
 build_snapshot() {
-  have_sf || return 2
+  SNAPSHOT_ERROR=""
+  have_sf || { SNAPSHOT_ERROR="sf_missing"; return 2; }
   set_oflag
-  local display org limits
-  display="$(sf_json org display "${OFLAG[@]}")" || return 3
+  local display_raw display org limits limits_av="ok"
+  display_raw="$(sf_try org display "${OFLAG[@]}")" || {
+    SNAPSHOT_ERROR="$(classify_sf_error "$display_raw")"
+    [[ "$SNAPSHOT_ERROR" == "transient" || "$SNAPSHOT_ERROR" == "timeout" ]] \
+      || SNAPSHOT_ERROR="unauthenticated"
+    return 3
+  }
+  display="$(jq -c '.result' <<<"$display_raw")"
   # Organization row tells us sandbox vs prod, pod, edition — the stuff that matters.
   org="$(sf_json data query "${OFLAG[@]}" -q \
     "SELECT Id, Name, IsSandbox, OrganizationType, InstanceName, TrialExpirationDate FROM Organization LIMIT 1")" \
     || org='{"records":[]}'
-  limits="$(sf_json org list limits "${OFLAG[@]}")" || limits='[]'
+  limits="$(sf_json org list limits "${OFLAG[@]}")" || { limits='[]'; limits_av="unknown"; }
 
-  # Never persist the access token that `sf org display` includes.
+  # Never persist the access token that `sf org display` includes. Never print Consumer Secret.
   jq -n \
     --argjson display "$display" \
     --argjson org "$org" \
     --argjson limits "$limits" \
+    --arg limitsAv "$limits_av" \
     --arg ts "$(date +%s)" \
     '{
        ts: ($ts|tonumber),
        org: ($org.records[0] // {}),
        display: ($display | del(.accessToken, .password, .clientSecret, .clientId)),
-       limits: ($limits // [])
-     }' > "$SNAPSHOT_FILE"
+       limits: ($limits // []),
+       limitsAvailability: $limitsAv
+     }' | write_secure "$SNAPSHOT_FILE"
 }
 
 # Load a fresh-enough snapshot (build if stale / forced). Echoes the JSON.
 load_snapshot() {
-  mkdir -p "$CACHE_DIR"
+  ensure_state_dir
   if [[ $FORCE_REFRESH -eq 1 ]] || ! snapshot_is_fresh; then
     build_snapshot || { [[ -f "$SNAPSHOT_FILE" ]] || return $?; }
   fi
@@ -205,14 +297,21 @@ org_edition(){ jq -r '.org.OrganizationType // "?"' <<<"$1"; }
 org_url()    { jq -r '.display.instanceUrl // "?"' <<<"$1"; }
 snap_age()   { jq -r '((now - .ts)|floor)' <<<"$1"; }
 
-# Worst headline utilization -> "pct sev name"
+# Worst headline utilization -> "pct sev name used max"
+# Limits miss → unknown (never silent 0% green).
 peak_util() { # <snapshot>
   local snap="$1" line best_pct=-1 best_name="" best_used=0 best_max=0
+  local lav
+  lav="$(jq -r '.limitsAvailability // "ok"' <<<"$snap" 2>/dev/null || echo ok)"
+  if [[ "$lav" != "ok" ]]; then
+    echo "? unknown - 0 0"
+    return
+  fi
   while IFS=$'\t' read -r used max pct name; do
     [[ -z "${pct:-}" ]] && continue
     if (( pct > best_pct )); then best_pct=$pct; best_name=$name; best_used=$used; best_max=$max; fi
   done < <(headline_rows "$snap")
-  (( best_pct < 0 )) && { echo "0 ok - 0 0"; return; }
+  (( best_pct < 0 )) && { echo "? unknown - 0 0"; return; }
   echo "$best_pct $(sev_for_pct "$best_pct") $best_name $best_used $best_max"
 }
 
@@ -249,14 +348,24 @@ cmd_bar() {
   read -r pct sev pk_name used max < <(peak_util "$snap")
   age="$(human_secs "$(snap_age "$snap")")"
 
-  local text tooltip
-  text="$(printf '%s %s·%s  %d%%' "$glyph" "$name" "$env" "$pct")"
-  tooltip="$(printf '%s  (%s)\n%s\nInstance: %s · %s\nUser: %s\nPeak limit: %s  %s/%s (%d%%)\nUpdated %s ago · click to switch org' \
-    "$name" "$env" "$(org_id "$snap")" "$(org_pod "$snap")" "$(org_edition "$snap")" \
-    "$(org_user "$snap")" "$pk_name" "$used" "$max" "$pct" "$age")"
+  local text tooltip pct_disp pct_json
+  if [[ "$sev" == "unknown" ]]; then
+    pct_disp="?%"
+    pct_json="null"
+    tooltip="$(printf '%s  (%s)\n%s\nInstance: %s · %s\nUser: %s\nPeak limit: unknown (limits API missed — not 0%%)\nUpdated %s ago · click to switch org' \
+      "$name" "$env" "$(org_id "$snap")" "$(org_pod "$snap")" "$(org_edition "$snap")" \
+      "$(org_user "$snap")" "$age")"
+  else
+    pct_disp="$(printf '%d%%' "${pct:-0}")"
+    pct_json="${pct:-0}"
+    tooltip="$(printf '%s  (%s)\n%s\nInstance: %s · %s\nUser: %s\nPeak limit: %s  %s/%s (%d%%)\nUpdated %s ago · click to switch org' \
+      "$name" "$env" "$(org_id "$snap")" "$(org_pod "$snap")" "$(org_edition "$snap")" \
+      "$(org_user "$snap")" "$pk_name" "$used" "$max" "$pct" "$age")"
+  fi
+  text="$(printf '%s %s·%s  %s' "$glyph" "$name" "$env" "$pct_disp")"
 
   jq -nc --arg t "$text" --arg tip "$tooltip" --arg env "$envclass" --arg sev "$sev" \
-    --argjson pct "${pct:-0}" \
+    --argjson pct "$pct_json" \
     '{text:$t, tooltip:$tip, class:[$env, $sev], percentage:$pct}'
 }
 
@@ -283,20 +392,18 @@ cmd_orgs() {
 
 cmd_pin() {
   local alias="${1:-}"
-  mkdir -p "$STATE_DIR"; chmod 700 "$STATE_DIR" 2>/dev/null || true
-  [[ -f "$STATE_FILE" ]] || echo '{}' > "$STATE_FILE"
+  ensure_state_dir
+  [[ -f "$STATE_FILE" ]] || echo '{}' | write_secure "$STATE_FILE"
   if [[ -z "$alias" ]]; then
     local cur; cur="$(pinned_org)"
     printf 'Pinned org: %s\n' "${cur:-<none — using sf default>}"
     return 0
   fi
   if [[ "$alias" == "-" ]]; then
-    jq 'del(.pinnedOrg)' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
-    chmod 600 "$STATE_FILE"
+    jq 'del(.pinnedOrg)' "$STATE_FILE" | write_secure "$STATE_FILE"
     echo "Cleared pin — bluechip will use the sf default org."
   else
-    jq --arg a "$alias" '.pinnedOrg = $a' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
-    chmod 600 "$STATE_FILE"
+    jq --arg a "$alias" '.pinnedOrg = $a' "$STATE_FILE" | write_secure "$STATE_FILE"
     printf 'Pinned %s%s%s for bluechip.\n' "$BOLD" "$alias" "$RESET"
   fi
   FORCE_REFRESH=1; load_snapshot >/dev/null 2>&1 || true
@@ -378,8 +485,13 @@ cmd_context() {
   logs="$(sf_json data query "${OFLAG[@]}" -q \
     "SELECT Id, Operation, Status, StartTime, LogLength FROM ApexLog ORDER BY StartTime DESC LIMIT 10")" || logs='{"records":[]}'
 
-  local sandbox env; sandbox="$(is_sandbox "$snap")"
-  [[ "$sandbox" == "true" ]] && env="SANDBOX" || env="PROD"
+  local state env
+  state="$(sandbox_state "$snap")"
+  case "$state" in
+    sandbox) env="SANDBOX" ;;
+    prod)    env="PROD" ;;
+    *)       env="UNKNOWN" ;;
+  esac
 
   # Markdown incident bundle — paste straight into Claude / Cursor.
   cat <<EOF
@@ -411,214 +523,19 @@ $(jq -e '.records | length > 0' <<<"$logs" >/dev/null || echo "- (none)")
 
 ---
 _No secrets included. Access token, client id/secret are stripped before this bundle is built._
+_This pack is display-only — it is not write authority. Agents must not deploy from it._
 EOF
 }
 
-# ---------------------------------------------------------------------------
-# Data hygiene / scoring / freshness  — read-only aggregate SOQL only.
-# Cheap because SOQL COUNT(field) counts non-nulls, so one query yields the
-# fill-rate for every field on an object. The composite grade is the eye-catcher
-# and the natural on-ramp to OutboundSync remediation at scale.
-# ---------------------------------------------------------------------------
+# Hygiene probe lives in a sibling include so install.sh's symlink still resolves.
+_bluechip_self="${BASH_SOURCE[0]}"
+if [[ -L "$_bluechip_self" ]]; then
+  _bluechip_self="$(readlink -f "$_bluechip_self" 2>/dev/null || readlink "$_bluechip_self" || echo "$_bluechip_self")"
+fi
+# shellcheck source=bluechip-hygiene.inc
+source "$(dirname "$_bluechip_self")/bluechip-hygiene.inc"
 
-# Default checks. Override per org with ~/.config/bluechip/hygiene.json (same shape).
-hygiene_config() {
-  local f="$STATE_DIR/hygiene.json"
-  if [[ -f "$f" ]]; then cat "$f"; return; fi
-  cat <<'JSON'
-[
-  {"api":"Lead","label":"Leads","filter":"IsConverted = false","fields":["Email","Phone","Company","Title","Industry"],"activityDays":90,"dupeField":"Email"},
-  {"api":"Contact","label":"Contacts","filter":"","fields":["Email","Phone","Title"],"activityDays":90,"dupeField":"Email"},
-  {"api":"Account","label":"Accounts","filter":"","fields":["Phone","Website","Industry"],"activityDays":180,"dupeField":"Name"},
-  {"api":"Opportunity","label":"Opportunities","filter":"IsClosed = false","fields":["Amount","NextStep"],"activityDays":30,"dupeField":null,"overdue":"CloseDate < TODAY"}
-]
-JSON
-}
 
-hy_grade() { local s="${1:-0}"; if   ((s>=90)); then echo A; elif ((s>=80)); then echo B; elif ((s>=70)); then echo C; elif ((s>=60)); then echo D; else echo F; fi; }
-hy_color() { local s="${1:-0}"; if   ((s>=80)); then printf '%s' "$GREEN"; elif ((s>=60)); then printf '%s' "$YELLOW"; else printf '%s' "$RED"; fi; }
-
-# Worker: scan one object, emit a raw-counts JSON object. Best-effort per query;
-# if the object/fields aren't queryable it returns {available:false}.
-hygiene_object() {
-  local obj="$1" api label filter dupeField overdue days
-  api="$(jq -r '.api' <<<"$obj")"
-  label="$(jq -r '.label // .api' <<<"$obj")"
-  filter="$(jq -r '.filter // ""' <<<"$obj")"
-  dupeField="$(jq -r '.dupeField // empty' <<<"$obj")"
-  overdue="$(jq -r '.overdue // empty' <<<"$obj")"
-  days="$(jq -r '.activityDays // 90' <<<"$obj")"
-  local where="" andf=""
-  [[ -n "$filter" ]] && { where=" WHERE $filter"; andf=" AND ($filter)"; }
-
-  # 1) completeness — COUNT(Id) + COUNT(field) per configured field, in one query.
-  local sel="COUNT(Id) total" i=0 f; local fnames=()
-  while IFS= read -r f; do [[ -z "$f" ]] && continue; sel="$sel, COUNT($f) f$i"; fnames+=("$f"); i=$((i+1)); done \
-    < <(jq -r '.fields[]?' <<<"$obj")
-  local comp rec total
-  comp="$(sf_json data query "${OFLAG[@]}" -q "SELECT $sel FROM $api$where")" \
-    || { jq -nc --arg api "$api" --arg label "$label" '{api:$api,label:$label,available:false}'; return 0; }
-  rec="$(jq -c '.records[0] // {}' <<<"$comp")"
-  total="$(jq -r '.total // 0' <<<"$rec")"
-  local fieldsjson="{}" idx=0
-  for f in "${fnames[@]}"; do
-    local cnt; cnt="$(jq -r --arg k "f$idx" '.[$k] // 0' <<<"$rec")"
-    fieldsjson="$(jq -c --arg name "$f" --argjson v "${cnt:-0}" '. + {($name): $v}' <<<"$fieldsjson")"
-    idx=$((idx+1))
-  done
-
-  # 2) freshness: records with no activity in `days` (or never).
-  local stale; stale="$(sf_json data query "${OFLAG[@]}" -q \
-    "SELECT COUNT(Id) c FROM $api WHERE (LastActivityDate < LAST_N_DAYS:$days OR LastActivityDate = null)$andf" 2>/dev/null \
-    | jq -r '.records[0].c // empty' 2>/dev/null)"
-  # 3) ownership: records owned by an inactive user.
-  local orphaned; orphaned="$(sf_json data query "${OFLAG[@]}" -q \
-    "SELECT COUNT(Id) c FROM $api WHERE Owner.IsActive = false$andf" 2>/dev/null \
-    | jq -r '.records[0].c // empty' 2>/dev/null)"
-  # 4) duplicates: exact-match groups on the dupe field.
-  local dupeGroups="" dupeRecords=""
-  if [[ -n "$dupeField" ]]; then
-    local d; d="$(sf_json data query "${OFLAG[@]}" -q \
-      "SELECT COUNT(Id) ct FROM $api WHERE $dupeField != null$andf GROUP BY $dupeField HAVING COUNT(Id) > 1" 2>/dev/null)"
-    if [[ -n "$d" ]]; then
-      dupeGroups="$(jq -r '.records | length' <<<"$d" 2>/dev/null)"
-      dupeRecords="$(jq -r '[.records[].ct] | add // 0' <<<"$d" 2>/dev/null)"
-    fi
-  fi
-  # 5) pipeline: overdue open records (Opportunity).
-  local overdueCount="" openTotal=""
-  if [[ -n "$overdue" ]]; then
-    overdueCount="$(sf_json data query "${OFLAG[@]}" -q \
-      "SELECT COUNT(Id) c FROM $api WHERE $overdue$andf" 2>/dev/null | jq -r '.records[0].c // empty' 2>/dev/null)"
-    openTotal="$total"
-  fi
-
-  jq -nc \
-    --arg api "$api" --arg label "$label" --arg dupeField "${dupeField:-}" --argjson days "$days" \
-    --argjson total "${total:-0}" --argjson fields "$fieldsjson" \
-    --argjson stale "${stale:-null}" --argjson orphaned "${orphaned:-null}" \
-    --argjson dupeGroups "${dupeGroups:-null}" --argjson dupeRecords "${dupeRecords:-null}" \
-    --argjson overdue "${overdueCount:-null}" --argjson openTotal "${openTotal:-null}" \
-    '{api:$api,label:$label,available:true,dupeField:$dupeField,activityDays:$days,
-      total:$total,fields:$fields,stale:$stale,orphaned:$orphaned,
-      dupeGroups:$dupeGroups,dupeRecords:$dupeRecords,overdue:$overdue,openTotal:$openTotal}'
-}
-
-# Scoring pass (jq): sub-scores per object, composite grade, ranked "biggest wins".
-_hygiene_score_jq() {
-  cat <<'JQ'
-def s(n;d): if (d>0) then (100 - 100*(n)/(d)) else 100 end;
-map(
-  if .available then
-    . as $o | (.total) as $t
-    | (([.fields[]?] | add) // 0) as $filled
-    | (.fields | length) as $nf
-    | (if ($nf>0 and $t>0) then (100*$filled/($nf*$t)) else 100 end) as $comp
-    | s(.stale//0; $t) as $fresh
-    | s(.orphaned//0; $t) as $own
-    | s(((.dupeRecords//0)-(.dupeGroups//0)); $t) as $dup
-    | (if (.overdue != null and ($o.openTotal//0) > 0) then s(.overdue; $o.openTotal) else null end) as $pipe
-    | ([$comp,$fresh,$own,$dup] + (if $pipe!=null then [$pipe] else [] end)) as $dims
-    | . + {completeness:($comp|floor), freshness:($fresh|floor), ownership:($own|floor),
-           dupes:($dup|floor), pipeline:(if $pipe!=null then ($pipe|floor) else null end),
-           score:(($dims|add)/($dims|length)|floor)}
-  else . end
-) as $objects
-| ([$objects[] | select(.available and .total>0) | .score]) as $scores
-| (if ($scores|length)>0 then (($scores|add)/($scores|length)|floor) else 0 end) as $overall
-| {
-    ts: (now|floor),
-    overall: $overall,
-    grade: (if $overall>=90 then "A" elif $overall>=80 then "B" elif $overall>=70 then "C" elif $overall>=60 then "D" else "F" end),
-    objects: $objects,
-    wins: (
-      [ $objects[] | select(.available and .total>0) | . as $o
-        | ( (.fields | to_entries[] | select(.value < $o.total)
-             | ($o.total - .value) as $m
-             | {label:"\($m) \($o.label) missing \(.key)", count:$m,
-                pct:(if $o.total>0 then (100*$m/$o.total|floor) else 0 end), kind:"completeness"}),
-          (if (.stale//0)>0 then {label:"\(.stale) \($o.label) stale (no activity \($o.activityDays)d+)", count:.stale, kind:"freshness"} else empty end),
-          (if (.orphaned//0)>0 then {label:"\(.orphaned) \($o.label) owned by inactive users", count:.orphaned, kind:"ownership"} else empty end),
-          (if ((.dupeRecords//0)-(.dupeGroups//0))>0 then (((.dupeRecords//0)-(.dupeGroups//0)) as $ex | {label:"\($ex) duplicate \($o.label) by \($o.dupeField)", count:$ex, kind:"dupes"}) else empty end),
-          (if (.overdue//0)>0 then {label:"\(.overdue) \($o.label) overdue (past close date)", count:.overdue, kind:"pipeline"} else empty end)
-        ) ]
-      | sort_by(.count) | reverse | .[0:6]
-    )
-  }
-JQ
-}
-
-# Run all object workers in parallel, aggregate, score, cache.
-compute_hygiene() {
-  have_sf || return 1
-  set_oflag
-  local cfg tmp n idx
-  cfg="$(hygiene_config)" || return 1
-  tmp="$(mktemp -d "${TMPDIR:-/tmp}/bluechip.XXXXXX")" || return 1
-  n="$(jq 'length' <<<"$cfg")"
-  for ((idx=0; idx<n; idx++)); do
-    hygiene_object "$(jq -c ".[$idx]" <<<"$cfg")" > "$tmp/$(printf '%02d' "$idx").json" 2>/dev/null &
-  done
-  wait
-  local combined; combined="$(cat "$tmp"/*.json 2>/dev/null | jq -s '.')"
-  rm -rf "$tmp"
-  [[ -n "$combined" ]] || return 1
-  jq "$(_hygiene_score_jq)" <<<"$combined"
-}
-
-# One-line grade for the doctor card (reads the cached scan; never queries).
-hygiene_doctor_line() {
-  local f="$CACHE_DIR/hygiene.json" overall grade
-  [[ -f "$f" ]] || { printf '%s— run `bluechip hygiene`%s' "$DIM" "$RESET"; return; }
-  overall="$(jq -r '.overall // empty' "$f" 2>/dev/null)"
-  grade="$(jq -r '.grade // empty' "$f" 2>/dev/null)"
-  [[ -n "$overall" && -n "$grade" ]] || { printf '%s— run `bluechip hygiene`%s' "$DIM" "$RESET"; return; }
-  printf '%s%s%s %s(%s/100)%s' "$(hy_color "$overall")$BOLD" "$grade" "$RESET" "$DIM" "$overall" "$RESET"
-}
-
-cmd_hygiene() {
-  have_sf || die "sf CLI not found. Install @salesforce/cli and run: sf org login web"
-  local want_json=0; [[ "${1:-}" == "--json" ]] && want_json=1
-  [[ $want_json -eq 0 ]] && printf '%s  scanning org data — read-only aggregate queries…%s\n' "$DIM" "$RESET" >&2
-  local h; h="$(compute_hygiene)" || die "hygiene scan failed (need query access to the objects)."
-  mkdir -p "$CACHE_DIR"; printf '%s\n' "$h" > "$CACHE_DIR/hygiene.json"
-  if [[ $want_json -eq 1 ]]; then printf '%s\n' "$h"; return 0; fi
-
-  local snap overall grade gcolor
-  snap="$(load_snapshot 2>/dev/null)"
-  overall="$(jq -r '.overall' <<<"$h")"; grade="$(jq -r '.grade' <<<"$h")"
-  gcolor="$(hy_color "$overall")"
-  printf '\n  %sOrg Data Health%s   %s%s%s %s(%s/100)%s   %s%s%s\n\n' \
-    "$BOLD" "$RESET" "$gcolor$BOLD" "$grade" "$RESET" "$DIM" "$overall" "$RESET" \
-    "$GREY" "$(org_name "$snap")" "$RESET"
-
-  jq -r '.objects[] | [(.available|tostring), .label, (.total|tostring), ((.score//0)|tostring),
-                       ((.completeness//0)|tostring),((.freshness//0)|tostring),((.ownership//0)|tostring),((.dupes//0)|tostring),(.pipeline|tostring)] | @tsv' <<<"$h" \
-  | while IFS=$'\t' read -r avail label total score comp fresh own dup pipe; do
-      if [[ "$avail" != "true" ]]; then
-        printf '   %-20s %sn/a (no query access)%s\n' "$label" "$DIM" "$RESET"; continue
-      fi
-      if [[ "$total" == "0" ]]; then
-        printf '   %-20s %sno records%s\n' "$label" "$DIM" "$RESET"; continue
-      fi
-      printf '   %-20.20s %s %s%3d%s   %s(%s recs)%s\n' \
-        "$label" "$(bar_gauge "$score" 12)" "$(hy_color "$score")$BOLD" "$score" "$RESET" "$DIM" "$total" "$RESET"
-      local extra="completeness $comp · freshness $fresh · owners $own · dupes $dup"
-      [[ "$pipe" != "null" ]] && extra="$extra · pipeline $pipe"
-      printf '      %s%s%s\n' "$DIM" "$extra" "$RESET"
-    done
-
-  printf '\n  %sBiggest wins%s\n' "$BOLD" "$RESET"
-  if jq -e '.wins | length > 0' <<<"$h" >/dev/null; then
-    jq -r '.wins[] | "   • \(.label)"' <<<"$h"
-  else
-    printf '   %sClean — no material issues found.%s\n' "$GREEN" "$RESET"
-  fi
-
-  printf '\n  %sRemediate at scale →%s %sOutboundSync%s  %s%s%s\n' \
-    "$BOLD" "$RESET" "$CYAN$BOLD" "$RESET" "$DIM" "${BLUECHIP_REMEDIATE_URL:-https://outboundsync.com}" "$RESET"
-  printf '  %sExact-match dupes & fill-rates shown here; fuzzy / cross-object dedupe & enrichment run in OutboundSync.%s\n' "$DIM" "$RESET"
-}
 
 ascii_logo() {
   cat <<'EOF'
@@ -678,7 +595,7 @@ cmd_watch() {
   have_sf || die "sf CLI not found."
   local interval="${1:-300}"
   command -v notify-send >/dev/null 2>&1 || printf '%s(note: notify-send not found — will print alerts to stdout)%s\n' "$DIM" "$RESET" >&2
-  mkdir -p "$CACHE_DIR"; [[ -f "$WATCH_STATE" ]] || echo '{}' > "$WATCH_STATE"
+  ensure_state_dir; [[ -f "$WATCH_STATE" ]] || echo '{}' | write_secure "$WATCH_STATE"
   printf 'bluechip watch: every %ss (Ctrl-C to stop)\n' "$interval"
   while true; do
     FORCE_REFRESH=1
@@ -691,7 +608,7 @@ cmd_watch() {
     elif [[ "$sev" == "warn" && "$prevsev" == "ok" ]]; then
       notify "warning" "$(org_name "$snap") — $name at ${pct}%"
     fi
-    jq -n --arg s "$sev" '{peakSev:$s}' > "$WATCH_STATE"
+    jq -n --arg s "$sev" '{peakSev:$s}' | write_secure "$WATCH_STATE"
     sleep "$interval"
   done
 }
@@ -709,13 +626,13 @@ notify() { # <level> <msg>
 cmd_help() {
   cat <<EOF
 ${BOLD}bluechip${RESET} — Salesforce admin cockpit for Omarchy  ${DIM}v$BLUECHIP_VERSION${RESET}
-Read-only. Rides your existing ${BOLD}sf${RESET} login. No Connected App, no stored secrets.
+Experimental side branch — ${BOLD}main remains parked${RESET}. Read-only. Rides your existing ${BOLD}sf${RESET} login.
 
 ${BOLD}COMMANDS${RESET}
   ${CYAN}doctor${RESET}          Shareable org-vitals card ("fastfetch for your org")
   ${CYAN}bar${RESET}             Waybar JSON: org + PROD/SANDBOX + API limit %
   ${CYAN}limits${RESET}          Full limit utilization table
-  ${CYAN}hygiene${RESET}         Org Data Health score — completeness, freshness, dupes, owners
+  ${CYAN}hygiene${RESET}         Read-only data probe (completeness / freshness / dupes / owners)
   ${CYAN}flows${RESET}           Errored / paused Flow interviews
   ${CYAN}changes${RESET}         Recent Setup Audit Trail entries
   ${CYAN}context${RESET}         Paste-ready incident bundle for an AI agent

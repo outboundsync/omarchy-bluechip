@@ -12,6 +12,41 @@ Omarchy’s early users skew technical, agent-native, allergic to browser tax. T
 
 Make Omarchy the **best place on earth to operate and troubleshoot a Salesforce org** — especially sandboxes, broken automations, and limit pressure — with agents as force multipliers and a human confirm gate on anything that writes.
 
+## Three surfaces (do not collapse)
+
+These are three products. Mixing them was the v1 copy bug.
+
+| Surface | License | What it is | What it is not |
+| --- | --- | --- | --- |
+| **Cockpit** | MIT | Org pin, PROD/SANDBOX/`UNKNOWN` chrome, limits, Flow faults, Setup changes, agent context pack | A grade, a router, a paid SKU |
+| **Hygiene probe** | MIT, read-only | Per-object measured / unknown cards. Completeness only over measured fields. **No A–F until dimensions are measured** (H1–H10). All-unknown → no letter, no F | Org truth; OutboundSync product |
+| **Paid attach** | OutboundSync SKU | Router / enrichment remediation. Bluechip may **optional deep-link** only | Something the MIT CLI “is” |
+
+`sandboxState` is three-valued everywhere (`prod` \| `sandbox` \| `unknown`). Never print PROD when Organization/IsSandbox is unreadable.
+
+Beachhead (first ship, recommend): **org pin + hard chrome + limits + Flow faults + context pack**. Hygiene attach is the invoice line, not the first QML surface.
+
+## Confirm-before-write matrix
+
+Writes only after explicit confirm. This table is the gate; slogans are not.
+
+| Write | Allowed on | Confirm UX | Forbidden |
+| --- | --- | --- | --- |
+| Pin org | any | none if same `IsSandbox`; confirm if crossing sandbox↔prod | Agent pin without UI |
+| TraceFlag / log | sandbox default; prod extra | type alias | `--yes`, MCP write tool |
+| FLS / perm change | sandbox first | type alias + field list | “missing Edit → invent field” |
+| Flow activate / metadata deploy | sandbox first | type `PROD` + alias on prod | Agent deploy from context pack |
+| User freeze | prod allowed, extra | type username | batch freeze from agent |
+
+Hard rules:
+
+- No hidden `--force`. **Ban silent `--yes` for prod.**
+- No confirm remembered across orgs.
+- **Context pack is not write authority.** Agents are display-only unless this matrix is satisfied in the Bluechip UI.
+- Hosted SObject MCP writes (if any) are out of scope until a Tooling/Metadata call exists.
+
+v1 Salesforce writes: none. Local pin / Waybar style.css are not org writes.
+
 ## Pillars
 
 ### 1. Org & sandbox awareness
@@ -56,11 +91,11 @@ The admin at a sharp tech company opens Omarchy and sees: which org is hot, whic
 
 **ICP assumption:** the Salesforce org is **already set up**. No “getting started with Salesforce” widget, no Trailhead-style onboarding chrome, no empty-org wizard. The user is a System Admin (or equivalent) who already runs the org.
 
-**Paid attach:** OutboundSync data hygiene / data audit capabilities — built as OutboundSync product, made available through this Omarchy plugin. Ambient “see the mess” on the admin desk; remediation that can route through OutboundSync (including the router / enrichment path) when they want to act at scale.
+**Paid attach:** OutboundSync data hygiene / data audit — built as OutboundSync product. Contract stub: [docs/HYGIENE-ATTACH.md](docs/HYGIENE-ATTACH.md) (finding schema, no PII Id dump by default, sandbox findings must not remediate prod). Bluechip may optional-deep-link; the local `COUNT(field)` probe is **not** that product.
 
 **Not the SKU:** sandbox provisioning, Flow test infrastructure, and confirm-gated agents stay useful beachheads and dogfood; they are not the primary invoice line until proven.
 
-**Brand:** Bluechip remains the open Omarchy plugin name for now. Shipping furniture under an OutboundSync-facing label later is fine; do not confuse the MIT cockpit with the paid hygiene/router story.
+**Brand:** Bluechip remains the open Omarchy plugin name for now. Shipping furniture under an OutboundSync-facing label later is fine; do not confuse the MIT cockpit with the paid hygiene/router story. No “What does yours get?” grade marketing in the MIT CLI.
 
 ## Explicit non-goals (for now)
 
@@ -73,7 +108,13 @@ The admin at a sharp tech company opens Omarchy and sees: which org is hot, whic
 
 ## Park rule
 
-Shape and vision only until Harris unparks. No Connected App, no QML scaffold required to keep this document honest.
+`main` stays parked until Harris unparks. `bluechip-v1` is an experimental side branch, not the product of record. No Connected App, no QML scaffold, no marketplace listing until unpark.
+
+## Secrets / cache
+
+- State dir `~/.config/bluechip/` is `chmod 700` on first write; cache and credentials files are `0600`.
+- Never store or display a Consumer Secret in a settings UI (Enricherino rule). v1 has no Connected App and strips `accessToken` / `clientSecret` / `clientId` from snapshots and the context pack.
+- Hygiene config is code: object/field API names must match describe or a strict regex before interpolation into SOQL.
 
 ## Grounded in Harris × Brutus pain (2026-08 → 2026-09)
 
@@ -102,11 +143,24 @@ Real friction already felt — not hypothetical:
 
 ### Access stack (required to be real)
 
-- **Connected App / External Client App** for Bluechip (separate from Cursor MCP): scopes for API, refresh; Admin-approved; Sysadmin-only to start  
-- **User perms:** API Enabled, View Setup, Manage Flow / View All Data as needed, View Event Log Files (for MCP/Flex forensics), Modify Metadata if deploy features ship  
-- **APIs:** REST + **Tooling** + **Metadata** (hosted SObject MCP is not enough — that was the Brutus ceiling)  
-- **Local:** `sf` CLI optional for DX parity; Bluechip should not require VS Code  
+- **Connected App / External Client App** for Bluechip (separate from Cursor MCP): scopes for API, refresh; Admin-approved; Sysadmin-only to start
+- **User perms:** API Enabled, View Setup, Manage Flow / View All Data as needed, View Event Log Files (for MCP/Flex forensics), Modify Metadata if deploy features ship
+- **APIs (vision):** REST + **Tooling** + **Metadata** (hosted SObject MCP is not enough — that was the Brutus ceiling)
+- **Local:** `sf` CLI optional for DX parity; Bluechip should not require VS Code
 - **Hard rule:** never store Consumer Secret in the plugin settings UI (Enricherino `~/.config` 0600 pattern)
+
+### API honesty — vision vs this side branch
+
+Do not say “Tooling” until a Tooling call exists.
+
+| Call | Vision | `bluechip-v1` today |
+| --- | --- | --- |
+| `sf org display` | identity | **yes** |
+| `sf org list` / `sf org list limits` | limits pulse | **yes** (limits miss → unknown, not 0% green) |
+| `sf data query` (SOQL / REST) | Organization, FlowInterview, SetupAuditTrail, ApexLog, hygiene aggregates | **yes** |
+| `sf sobject describe` | probe-before-invent / FLS | **yes** (hygiene, before COUNT) |
+| Tooling (`TraceFlag`, Flow definition, NC/EC, FieldPermissions) | required for pillars 2, 4, 5 | **not called** |
+| Metadata retrieve/deploy | confirm-gated writes | **not called** |
 
 ### Agent leverage on this desk
 

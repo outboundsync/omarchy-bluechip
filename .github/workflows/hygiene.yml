@@ -1,0 +1,13 @@
+name: hygiene
+on:
+  push:
+  pull_request:
+jobs:
+  h1-h10:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: H1–H10 hygiene acceptance
+        run: ./scripts/test-hygiene.sh
