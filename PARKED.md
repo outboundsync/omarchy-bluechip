@@ -1,24 +1,29 @@
-# Unparked 2026-09-14 → v1 shipped
+# Experimental side branch — not the product of record
 
-**Update (2026-09-14, Dreamforce week):** unparked into a read-only v1 — see
-[README.md](./README.md) and [docs/DEMO.md](./docs/DEMO.md). The v1 deliberately **rides the
-`sf` CLI** instead of a Connected App/QML, which is how it shipped in days without touching the
-parked blockers. Connected App / QML / marketplace listing remain parked for v2 per below.
+This `bluechip-v1` branch is an **experimental** CLI + Waybar chip. **`main` remains
+parked** until Harris unparks. Do not read this file as “v1 shipped on main.”
 
-The **OutboundSync hygiene wedge** (VISION "Revenue wedge") is now *seeded* read-only: `bluechip
-hygiene` scores Org Data Health (completeness / freshness / duplicates / ownership) and routes
-"remediate at scale" to OutboundSync via `BLUECHIP_REMEDIATE_URL`. This is the ambient "see the
-mess" surface; the paid remediation/router product stays the invoice line, not the MIT cockpit.
+The 2026-09-14 “Unparked → v1 shipped” banner was a process bug (adversarial
+review 2026-09-15, P0-2). Soft-unpark copy is withdrawn.
+
+Connected App / QML / marketplace listing remain parked for v2. Do not scaffold
+those until Harris unparks.
+
+The local `bluechip hygiene` probe is a **read-only MIT experiment**. It is not the
+OutboundSync product. Letter grades appear only when H1–H10 measured-data rules
+pass; an all-unknown scan has **no grade** and does **not** overwrite last-good
+cache.
 
 ---
 
-# Parked 2026-09-14
+# Parked 2026-09-14 (still the rule on `main`)
 
-**Name:** Bluechip (Harris + Agrippa).  
-**Repo:** `outboundsync/omarchy-bluechip` (not kenhara).  
-**ICP pivot:** Salesforce **System Admin** on Omarchy (not seller-first).  
+**Name:** Bluechip (Harris + Agrippa).
+**Repo:** `outboundsync/omarchy-bluechip` (not kenhara).
+**ICP pivot:** Salesforce **System Admin** on Omarchy (not seller-first).
 
 Vision: [VISION.md](./VISION.md)
 
-Do not scaffold QML, Connected App, or marketplace listing until Harris unparks.  
-Fabius = Omarchy shell craft when build starts. Brutus = org/Connected App policy if needed. Dante keeps the parked story until told otherwise.
+Do not scaffold QML, Connected App, or marketplace listing until Harris unparks.
+Fabius = Omarchy shell craft when build starts. Brutus = org/Connected App policy
+if needed. Dante keeps the parked story until told otherwise.

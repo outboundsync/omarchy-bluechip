@@ -1,96 +1,87 @@
-# Bluechip — demo & launch kit
+# Bluechip — demo walkthrough
 
-A 60-second demo and copy for announcing at Dreamforce week.
+A 60-second walkthrough of the **experimental** `bluechip-v1` side branch.
+`main` remains parked. This is not a launch kit for a letter-grade product.
 
-## The hero shots
+## The shots
 
 ![bluechip doctor](../assets/doctor-card.svg)
 
-`bluechip doctor` is **"fastfetch for your Salesforce org"** — one command, a card people
-screenshot: org, a PROD/SANDBOX badge you can't misread, live limit gauges, open Flow faults,
-a **Data Health grade**, and the last Setup change. Post it. That's the hook.
+`bluechip doctor` is an org-vitals card: org, a PROD/SANDBOX/**UNKNOWN** badge,
+live limit gauges (or unknown if Limits missed), the last **measured** data
+probe (or “unknown — not graded”), and the last Setup change.
 
 ![bluechip hygiene](../assets/hygiene-card.svg)
 
-`bluechip hygiene` is the second hook and the wedge: it grades your org's data (completeness,
-freshness, duplicates, ownership) and ranks the biggest wins. "My org got a B — what did yours
-get?" is a thread. Remediation at scale routes to OutboundSync.
+`bluechip hygiene` is a **read-only probe**, not a viral grade. It shows
+per-object measured / unknown cards. Completeness is only over fields the
+running user can actually query. A dimension miss is `?`, not 100. An
+all-unknown scan has no letter and does not overwrite last-good cache.
 
-## 60-second demo script
+Local probe ≠ OutboundSync product. An optional remediate deep-link appears
+only when `BLUECHIP_REMEDIATE_URL` is set.
+
+## 60-second script
 
 ```bash
 # 0. You already did this once — bluechip rides it, no Connected App:
 sf org login web
 
-# 1. The card (screenshot this)
+# 1. The card
 bluechip doctor
 
-# 2. It lives in your bar. Amber before red, PROD vs SANDBOX unmistakable.
+# 2. It lives in your bar. Amber before red, PROD vs SANDBOX vs UNKNOWN.
 #    (Waybar chip — see README "Install the chip")
 
 # 3. Never debug the wrong org again — pin from the bar, or:
 bluechip orgs
 bluechip pin acme-uat
 
-# 4. The pain everyone knows — what's on fire and what changed:
+# 4. What's on fire and what changed:
 bluechip limits
 bluechip flows
 bluechip changes
 
-# 4b. Grade your data. One letter, one number, screenshot-ready.
-#     (completeness · freshness · duplicates · ownership · pipeline)
+# 4b. Probe data (measured / unknown — not a marketing grade)
 bluechip hygiene
+bluechip hygiene --json   # availability / dimensions / error shape
 
-# 5. The part frontier agents can't do for themselves — hand Claude/Cursor
-#    the whole incident, pre-assembled, zero copy-paste archaeology:
-bluechip context | wl-copy      # now paste into your agent
+# 5. Hand-off for an agent (display-only — not write authority):
+bluechip context | wl-copy
 ```
 
 ## Why an admin cares (say this)
 
-- **Org split-brain, solved.** A prod chip you cannot mistake for a sandbox. (The #1 way admins
-  break things: debugging Dev Ed thinking it's EE.)
-- **Limits before they page you.** API, storage, async Apex, platform events — amber → red in the
-  bar, ambient, no Setup spelunking.
-- **Agent context pack.** `bluechip context` assembles org id, limits, Flow faults, and ApexLog
-  ids into one paste — the missing hand-off between your org and your agent.
-- **Read-only and honest.** Uses *your* `sf` login. No Connected App, no stored secrets, nothing
-  written to your org. Writes/confirm-gate come later, sandbox-first.
+- **Org split-brain, reduced.** A prod chip you cannot mistake for a sandbox;
+  UNKNOWN when we could not read `Organization.IsSandbox`.
+- **Limits before they page you.** API, storage, async Apex, platform events —
+  amber → red in the bar. A limits miss is unknown, not a healthy 0%.
+- **Agent context pack.** `bluechip context` assembles org id, limits, Flow
+  faults, and ApexLog ids into one paste. It is not authorization to deploy.
+- **Read-only.** Uses *your* `sf` login. No Connected App, no stored secrets,
+  nothing written to your org. Writes/confirm-gate come later, sandbox-first
+  ([matrix](../VISION.md#confirm-before-write-matrix)).
 
-## Announcement copy
+## Copy (honest)
 
 **X / short:**
-> Your Salesforce org now lives in your Linux status bar. 🔵
-> Bluechip for @omarchy: PROD/SANDBOX you can't misread, live API-limit gauges, Flow faults, and a
-> one-command agent context pack for Claude/Cursor. Open source, MIT, uses your own `sf` login —
-> no Connected App. `bluechip doctor` ↓ #Dreamforce
+> Salesforce org pulse in the Linux status bar. Bluechip (Omarchy):
+> PROD/SANDBOX/UNKNOWN chrome, live API-limit gauges, Flow faults, and a
+> one-command agent context pack. Experimental side branch; `main` is parked.
+> Open source, MIT, uses your own `sf` login — no Connected App.
 
-**X / the data-health angle (thread bait):**
-> `bluechip hygiene` grades your Salesforce org's data in one command: completeness, freshness,
-> duplicates, dead-owner records. My org got a **B (81)**. What does yours get? 🔵
-> Read-only, MIT, runs on your own `sf` login. #Dreamforce
+Do **not** use “What does yours get?” / letter-grade-as-org-truth copy.
 
-**LinkedIn / longer:**
-> Salesforce admins on Linux: meet Bluechip.
-> It puts your org's pulse in the Omarchy (Hyprland) status bar — a PROD vs SANDBOX badge you can't
-> mistake, live limit utilization (API, storage, async Apex, platform events) that goes amber
-> before red, and your errored/paused Flow interviews surfaced without Setup archaeology.
-> The part I'm most excited about: `bluechip context` assembles a full incident bundle — org id,
-> limits, Flow faults, recent ApexLog ids — into one paste for Claude or Cursor. The missing
-> hand-off between your org and your agent.
-> It's read-only and rides your existing `sf` CLI login: no Connected App to register, no secrets
-> stored. MIT-licensed. Unofficial, not affiliated with Salesforce.
-> Try it: `bluechip doctor` → screenshot your org. Repo in comments.
-
-**Omarchy community (GitHub discussion #3457 / Discord):**
-> Built a Waybar module for the Salesforce admins in here: Bluechip. Org pulse + PROD/SANDBOX
-> chrome + limit gauges + Flow faults, all read-only over your own `sf` login. `bluechip doctor`
-> is a neofetch-style org card. Feedback welcome — themes inherit from your Omarchy theme.
+**Omarchy community:**
+> Waybar module for Salesforce admins: Bluechip. Org pulse + PROD/SANDBOX/
+> UNKNOWN chrome + limit gauges + Flow faults, read-only over your own `sf`
+> login. `bluechip doctor` is a neofetch-style org card. Side branch, not
+> unparked main.
 
 ## Notes / honesty
 
-- Flow faults are **best-effort**: hard faults roll back and may not persist as `FlowInterview`
-  rows. Bluechip surfaces errored/paused interviews and points you at `bluechip changes`
-  for the rest.
-- Everything is derived from `sf ... --json` (REST + Tooling + Limits). If `sf` can see it, so
-  can Bluechip; if it can't, Bluechip says so instead of guessing.
+- Flow faults are **best-effort**: hard faults roll back and may not persist as
+  `FlowInterview` rows.
+- v1 calls `sf org display`, `sf org list limits`, `sf data query`, and
+  `sf sobject describe`. **Not Tooling. Not Metadata.**
+- Hygiene acceptance tests: `./scripts/test-hygiene.sh` (H1–H10).
