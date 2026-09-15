@@ -8,3 +8,5 @@ Vision: [VISION.md](./VISION.md)
 
 Do not scaffold QML, Connected App, or marketplace listing until Harris unparks.  
 Fabius = Omarchy shell craft when build starts. Brutus = org/Connected App policy if needed. Dante keeps the parked story until told otherwise.
+
+`origin/bluechip-v1` exists as an experimental side branch (Dreamforce-week CLI) and is **not** the product of record; `main` stays parked until Harris unparks.

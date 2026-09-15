@@ -7,7 +7,11 @@ Salesforce **admin cockpit** for Omarchy — org pulse, Flow faults, API limits,
 **ID (planned):** `outboundsync.bluechip`  
 **Author:** OutboundSync / Harris Kenny  
 **License:** MIT  
-**Status:** Parked 2026-09-14 — vision + shape only, not shipping.
+**Status:** Parked 2026-09-14 — vision + shape only, not shipping. No CLI, no QML, no Connected App on `main`.
+
+## Adversarial review (2026-09-15)
+
+Janus review of the parked vision, `bluechip-v1` experiment, and hygiene-scoring gaps: **[docs/ADVERSARIAL-REVIEW-2026-09-15.md](./docs/ADVERSARIAL-REVIEW-2026-09-15.md)**. Verdict: **not ready to unpark.** Doc fixes from that review land here; implementation waits for Harris.
 
 ## Direction (locked)
 
@@ -23,7 +27,7 @@ Named **Bluechip** — bar chip, blue-chip orgs, a nod to Salesforce blue — wi
 
 ## Parked
 
-See [PARKED.md](./PARKED.md). Unpark only when Harris says.
+See [PARKED.md](./PARKED.md). `main` is vision + shape only — not shipping, not a soft unpark. Unpark only when Harris says. The `bluechip-v1` side branch is experimental and not merged here.
 
 ## License
 
