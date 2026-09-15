@@ -10,6 +10,8 @@ measured / unknown (H1–H10). No letter-grade marketing. No marketplace listing
 No Connected App required while `sf` CLI + Tooling-via-`sf` covers
 the calls.
 
+Agent contract: [AGENTS.md](../AGENTS.md). Recipes: [AGENT-PLAYBOOK.md](AGENT-PLAYBOOK.md).
+
 ---
 
 ## Wave 1 — shipped on this tip
@@ -31,7 +33,9 @@ the calls.
 
 ---
 
-## Wave 2 — this PR
+## Wave 2 — shipped on this tip
+
+Merged [PR #7](https://github.com/outboundsync/omarchy-bluechip/pull/7).
 
 | Item | Status | Notes |
 | --- | --- | --- |
@@ -49,22 +53,32 @@ No FLS apply, no TraceFlag create.
 
 ---
 
-## UX pass — this PR (Harris 2026-09-15)
+## UX pass — shipped on this tip
 
-Product SoT: [UX-PASS.md](UX-PASS.md). Same PR as the code — not a docs-only split.
+Harris 2026-09-15. Product SoT: [UX-PASS.md](UX-PASS.md). Merged
+[PR #8](https://github.com/outboundsync/omarchy-bluechip/pull/8).
 
 | Item | Status | Notes |
 | --- | --- | --- |
-| One chip, three reads | **this PR** | Idle `SBX · 62%`; warn/crit on faults or limits; unknown muted |
-| Verbs / help --all | **this PR** | Primary verbs in default help; pipes documented |
-| Incident object | **this PR** | `bluechip incident --json`; MCP `get_incident` matches; doctor --json reuses builder |
-| Watch as entr | **this PR** | Deltas + `--jsonl` / `--once`; pulse class on real transitions |
-| Scratchpad | **this PR** | Hyprland special workspace; no QML |
-| Clipboard toast | **this PR** | Success only; Copy pack in README |
-| Honest empty states | **this PR** | `unknown (reason)` vs `none` |
-| Composer pipeline | **this PR** | pin → pulse → probe → pack → agent → confirm write |
-| Simplify default path | **this PR** | install → login → doctor → chip; DEMO stays 60s |
-| QML / types / Connected App | **later** | Quattro panel = Fabius; not this PR |
+| One chip, three reads | **shipped** | Idle `SBX · 62%`; warn/crit on faults or limits; unknown muted |
+| Verbs / help --all | **shipped** | Primary verbs in default help; pipes documented |
+| Incident object | **shipped** | `bluechip incident --json`; MCP `get_incident` matches; doctor --json reuses builder |
+| Watch as entr | **shipped** | Deltas + `--jsonl` / `--once`; pulse class on real transitions |
+| Scratchpad | **shipped** | Hyprland special workspace; no QML |
+| Clipboard toast | **shipped** | Success only; Copy pack in README |
+| Honest empty states | **shipped** | `unknown (reason)` vs `none` |
+| Composer pipeline | **shipped** | pin → pulse → probe → pack → agent → confirm write |
+| Simplify default path | **shipped** | install → login → doctor → chip; DEMO stays 60s |
+| QML / types / Connected App | **later** | Quattro panel = Fabius; not this wave |
+
+---
+
+## Cleanup / hardening — shipped on this tip
+
+HANCORE I/O pass, merged [PR #9](https://github.com/outboundsync/omarchy-bluechip/pull/9).
+Finding → fix: [CLEANUP-2026-09-15.md](CLEANUP-2026-09-15.md). Suite:
+`tests/test-hardening.sh` (caps, 0700/0600, symlink refuse, SELECT grep, cache
+TTL, cwd impostor, clipboard URL/flag, watch clamp). CI job already runs it.
 
 ---
 

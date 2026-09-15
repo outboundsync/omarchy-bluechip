@@ -107,4 +107,5 @@ Do **not** use “What does yours get?” / letter-grade-as-org-truth copy.
   **Not** Metadata retrieve/deploy. **Not** FLS apply.
 - Hygiene acceptance tests: `./scripts/test-hygiene.sh` (H1–H10). Wave 1:
   `./tests/test-named-creds.sh`, `./tests/test-trace.sh`, `./tests/test-mcp.sh`.
-  Wave 2: `./tests/test-wave2.sh`.
+  Wave 2: `./tests/test-wave2.sh`. UX: `./tests/test-ux-pass.sh`. Hardening:
+  `./tests/test-hardening.sh`. Agent contract: [AGENTS.md](../AGENTS.md).
