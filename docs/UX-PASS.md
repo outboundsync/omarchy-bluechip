@@ -1,14 +1,11 @@
 # Bluechip UX pass — harness product SoT
 
-Harris **2026-09-15**. This file is the product source of truth for the
-Omarchy cockpit **as a UNIX harness**, not a QML app. This pass **shipped on
-`bluechip-v1`** ([PR #8](https://github.com/outboundsync/omarchy-bluechip/pull/8)).
-Agent contract for the composer pipeline: [AGENTS.md](../AGENTS.md). Recipes:
-[AGENT-PLAYBOOK.md](AGENT-PLAYBOOK.md).
+Product source of truth for the Omarchy cockpit **as a UNIX harness**, not a QML
+app. Agent pipeline: [AGENTS.md](../AGENTS.md). Recipes:
+[AGENT-PLAYBOOK.md](AGENT-PLAYBOOK.md). Parked remainder:
+[SHIP-BACKLOG.md](SHIP-BACKLOG.md).
 
-MIT cockpit ≠ paid OutboundSync hygiene SKU. TraceFlag remains the only org
-write. MCP stays display-only. Quattro / QML marketplace plugin is **later
-Fabius polish** — not this wave.
+TraceFlag is the only org write. MCP stays display-only.
 
 ---
 
@@ -55,35 +52,30 @@ Progressive disclosure:
 2. **Doctor / desk** — tables a human can screenshot.
 3. **`--json` / MCP** — full graph for an agent.
 
-Default path (simplify): **install → `sf org login web` → `bluechip doctor` → chip.**
+Default path: **install → `sf org login web` → `bluechip doctor` → chip.**
+[DEMO.md](DEMO.md) is the 60-second script. Unfinished stubs (`types`) stay off
+default help.
 
-### What already wins vs Claude / Codex
+Thresholds: `BLUECHIP_WARN_PCT` (75), `BLUECHIP_CRIT_PCT` (90),
+`BLUECHIP_CACHE_TTL` (120s), `BLUECHIP_DUPE_CAP` (200).
 
-Frontier agents are strong at *reasoning over a paste*. They are weak at
-*sitting in the OS*:
+### What already wins vs a paste into Claude
 
-- **Ambient chrome they cannot spoof.** A Waybar chip whose SANDBOX background
-  you cannot miss, and UNKNOWN that refuses to look healthy.
-- **Pin you confirm.** Crossing prod↔sandbox is a typed gate, not a vibe.
-- **Honesty under FLS.** Unknown is a first-class value (H1–H10). Hosted
-  Salesforce MCP still cannot see Metadata / custom fields; Bluechip says so.
-- **Context pack already assembled.** Org id, limits, Flow faults, ApexLog ids
-  — without the operator hunting Setup.
-- **Writes are not implied.** The pack is display-only. TraceFlag is CLI +
-  confirm. MCP has no create/apply tools.
-- **Pipes.** `bluechip context | wl-copy` lands in any agent. No Electron
-  sidecar.
+Frontier agents reason over a paste. They do not sit in the OS:
 
-Keep those. This pass polishes the harness around them; it does not add a
-second UI framework.
+- **Ambient chrome they cannot spoof.** SANDBOX background you cannot miss;
+  UNKNOWN that refuses to look healthy.
+- **Pin you confirm.** Crossing prod↔sandbox is a typed gate.
+- **Honesty under FLS.** Unknown is a first-class value (H1–H10).
+- **Context pack already assembled.** Org id, limits, Flow faults, ApexLog ids.
+- **Writes are not implied.** Packs are display-only. TraceFlag is CLI + confirm.
+- **Pipes.** `bluechip context | wl-copy` lands in any agent.
 
 ---
 
-## Ten polish items (shipped)
+## Chip
 
-### 1. One chip, three reads
-
-Idle chip text is **identity + worst signal**, compact:
+Idle chip text is **identity + worst signal**:
 
 ```text
 SBX · 62%
@@ -101,10 +93,7 @@ PROD · 1 fault
 - **`--all`:** chip chrome stays the pin; desk rows (each with their own
   badge) live in the tooltip.
 
-Click → doctor/panel is Waybar `on-click` / `on-click-middle` already. This
-pass tightens copy, not the binding.
-
-### 2. Verbs language
+## Verbs
 
 Default `bluechip` / `bluechip help` lists **primary verbs only**. Rarely used
 commands and unfinished stubs live behind `bluechip help --all`.
@@ -115,15 +104,13 @@ Primary: `doctor`, `bar`, `pin`, `orgs`, `limits`, `flows`, `incident`,
 Every primary command that returns data supports `--json` (bar is JSON
 already).
 
-Pipes (print these in help):
-
 ```bash
 bluechip context | wl-copy
 bluechip incident --json | jq '.signal'
 bluechip hygiene --json | jq '.overall'
 ```
 
-### 3. Incident mode
+## Incident
 
 `bluechip incident [--json]` packs **one object**:
 
@@ -137,12 +124,11 @@ bluechip hygiene --json | jq '.overall'
 - the same markdown pack `context` already emits, plus those summaries
 
 `doctor --json` reuses this builder. MCP `get_incident` calls
-`bluechip incident --json` (no longer a silent alias of markdown `context`).
+`bluechip incident --json`.
 
-### 4. Watch as entr
+## Watch
 
-`bluechip watch [--jsonl] [--once] [secs]` is a delta loop, not a heartbeat
-spam:
+`bluechip watch [--jsonl] [--once] [secs]` is a delta loop, not a heartbeat:
 
 | Transition | Notify (mako) | Waybar `pulse` |
 | --- | --- | --- |
@@ -152,33 +138,35 @@ spam:
 | first observation / heartbeat | no | no |
 | unknown ↔ known without a fault/limit cross | no | no |
 
-`--jsonl` writes one JSON object per tick for agents (`event` + current
-signal). `--once` is for tests and one-shot probes.
+`--jsonl` writes one JSON object per tick (`event` + current signal). `--once`
+is for tests and one-shot probes.
 
-### 5. Scratchpad helper
+## Scratchpad
 
-`bluechip scratchpad` / `bin/bluechip-scratchpad`: Hyprland **special
-workspace** summon. Spawn-if-missing a terminal running `bluechip logs --follow`
-(or `--sf` for an `sf`+`jq` shell). No QML. Bind is documented, not installed.
+`bluechip scratchpad` / `bin/bluechip-scratchpad`: Hyprland **special workspace**
+summon. Spawn-if-missing a terminal running `bluechip logs --follow` (or `--sf`
+for an `sf`+`jq` shell). No QML. Bind is documented, not installed.
 
 ```
 bind = SUPER SHIFT, B, exec, bluechip-scratchpad
 ```
 
-### 6. Clipboard
-
-Wave 2 shipped clipboard → context. Polish:
+## Clipboard
 
 - `notify-send` **only on success** (`bluechip-clipboard`). Unrecognized
   selection stays quiet.
-- Neutralize remote strings on ingest (already required; keep it).
-- README / doctor tooltip: **Copy pack** =
-  `bluechip incident | wl-copy` or `bluechip clipboard --copy`.
+- Neutralize remote strings on ingest.
+- Copy pack: `bluechip incident | wl-copy` or `bluechip clipboard --copy`.
 
-### 7. Honest empty states
+Optional bind:
 
-Never a silent blank where a probe ran. Use **`unknown (reason)`** vs
-**`none`**:
+```
+bind = SUPER SHIFT, V, exec, bluechip clipboard --copy
+```
+
+## Honest empty states
+
+Never a silent blank where a probe ran. Use **`unknown (reason)`** vs **`none`**:
 
 | Surface | Miss | Empty-but-ok |
 | --- | --- | --- |
@@ -191,48 +179,18 @@ Never a silent blank where a probe ran. Use **`unknown (reason)`** vs
 | desk | `unknown` per cell | `No desk orgs. Pin one…` |
 | changes | `unknown (reason)` | `none` |
 
-### 8. Composer pipeline
-
-Documented here and in README, short:
-
-**`pin → pulse → probe → pack → agent → confirm write`**
-
-Agents do not skip to write. Context / incident packs are not authorization.
-Contract: [AGENTS.md](../AGENTS.md). Recipes: [AGENT-PLAYBOOK.md](AGENT-PLAYBOOK.md).
-
-### 9. Simplify the default path
-
-1. `./install.sh`
-2. `sf org login web`
-3. `bluechip doctor`
-4. Add the Waybar chip
-
-`docs/DEMO.md` stays a **60-second walkthrough**. README stops duplicating the
-script; it links here + DEMO. Unfinished stubs (`types`) stay off default help.
-
-### 10. Extend later (not this wave)
-
-- Apex type explorer (`bluechip types`)
-- Connected App / hosted MCP
-- Confirm-gated FLS apply / Flow activate
-- **Quattro QML panel** (Fabius) — doctor-as-widget, copy-pack button in-panel
-- Promote `bluechip-v1` → `main`
-- Paid OutboundSync attach API
-
----
-
 ## Constraints (do not regress)
 
-- H1–H10 + Wave 1/2 suites stay green.
-- MCP display-only: no new write tools.
+- H1–H10 and the test suites stay green.
+- MCP display-only: no write tools.
 - Confirm matrix unchanged. Silent `--yes` banned on prod / unknown.
 - No secrets in output; neutralize remote strings.
 - `sandboxState` is `prod | sandbox | unknown` everywhere.
 - Harris merges.
 
-## Commands added or reshaped
+## Commands
 
-| Command | Change |
+| Command | Role |
 | --- | --- |
 | `bluechip bar` | Compact identity + worst signal; tooltip hierarchy; `pulse` class |
 | `bluechip help` / `help --all` | Primary vs advanced verbs |

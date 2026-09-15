@@ -1,111 +1,54 @@
-# Bluechip — demo walkthrough
+# Bluechip — 60-second walkthrough
 
-A 60-second walkthrough of Wave 2 + the UX pass on the `bluechip-v1` **active
-build tip**. Product SoT for the harness: [UX-PASS.md](UX-PASS.md). README is
-the install/trust story — this file stays a short script, not a second manual.
-`main` may still hold parked vision until a later promote. This is not a launch
-kit for a letter-grade product.
+Pin → pulse → probe → pack → agent → confirm write.
+
+Install and trust: [README.md](../README.md). Harness: [UX-PASS.md](UX-PASS.md).
 
 ## The shots
 
 ![bluechip doctor](../assets/doctor-card.svg)
 
-`bluechip doctor` is an org-vitals card: org, a PROD/SANDBOX/**UNKNOWN** badge,
-live limit gauges (or unknown if Limits missed), the last **measured** data
-probe (or “unknown — not graded”), and the last Setup change.
+`bluechip doctor` — org, a PROD / SANDBOX / **UNKNOWN** badge, live limit gauges
+(or unknown if Limits missed), last measured data probe, last Setup change.
 
 ![bluechip hygiene](../assets/hygiene-card.svg)
 
-`bluechip hygiene` is a **read-only probe**, not a viral grade. It shows
-per-object measured / unknown cards. Completeness is only over fields the
-running user can actually query. A dimension miss is `?`, not 100. An
-all-unknown scan has no letter and does not overwrite last-good cache.
+`bluechip hygiene` — per-object measured / unknown cards. A miss is `?`, not 100.
+An all-unknown scan has no letter and does not overwrite last-good cache.
 
-Local probe ≠ OutboundSync product. An optional remediate deep-link appears
-only when `BLUECHIP_REMEDIATE_URL` is set.
-
-## 60-second script
+## Script
 
 ```bash
-# 0. You already did this once — bluechip rides it, no Connected App:
+# 0. Once — Bluechip rides this session, no Connected App:
 sf org login web
 
-# 1. The card
+# 1. Vitals
 bluechip doctor
 
-# 2. It lives in your bar. Amber before red, PROD vs SANDBOX vs UNKNOWN.
-#    (Waybar chip — see README "Install the chip")
-
-# 3. Never debug the wrong org again — pin from the bar, or:
+# 2. Pin (never debug the wrong org)
 bluechip orgs
 bluechip pin acme-uat
 
-# 4. What's on fire and what changed:
-bluechip limits
-bluechip flows
-bluechip changes
-
-# 4b. Probe data (measured / unknown — not a marketing grade)
-bluechip hygiene
-bluechip hygiene --json   # availability / dimensions / error shape
-
-# 5. Hand-off for an agent (display-only — not write authority):
+# 3. Pack what's on fire for an agent (hand-off, not write authority)
 bluechip incident | wl-copy
-#    or: bluechip context | wl-copy
 
-# 6. Named creds (never prints secrets) + confirm-gated debug:
-bluechip named-creds
-bluechip trace start          # type SANDBOX / alias; type PROD on prod
+# 4. Confirm-gated debug (type SANDBOX / alias; type PROD on prod)
+bluechip trace start
 bluechip logs --follow
-
-# 6b. Wave 2 probes (read-only; FLS propose does not apply):
-bluechip fls --user integration@acme.com --fields Account.SavvyCal_Id__c
-bluechip fls-propose --user integration@acme.com --fields Account.SavvyCal_Id__c
-bluechip offenders --since 9am
-bluechip desk
-bluechip clipboard --copy     # optional Hyprland bind: SUPER SHIFT+V
-
-# 7. Local MCP (optional):
-bluechip mcp-config
 ```
 
-## Why an admin cares (say this)
+Waybar chip: README install. Optional MCP: `bluechip mcp-config` (display-only).
 
-- **Org split-brain, reduced.** A prod chip you cannot mistake for a sandbox;
-  UNKNOWN when we could not read `Organization.IsSandbox`.
-- **Limits before they page you.** API, storage, async Apex, platform events —
-  amber → red in the bar. A limits miss is unknown, not a healthy 0%.
-- **Agent context pack.** `bluechip incident` (or `context`) assembles org id,
-  limits, Flow faults, named-cred summary, and ApexLog ids into one paste. It is
-  not authorization to deploy.
-- **Read-only.** Uses *your* `sf` login. No Connected App, no stored secrets,
-  nothing written to your org. Writes/confirm-gate come later, sandbox-first
-  ([matrix](../VISION.md#confirm-before-write-matrix)).
+More verbs (`hygiene`, `named-creds`, `fls`, `offenders`, `desk`):
+`bluechip help --all` and [UX-PASS.md](UX-PASS.md).
 
-## Copy (honest)
+## Say this
 
-**X / short:**
-> Salesforce org pulse in the Linux status bar. Bluechip (Omarchy):
-> PROD/SANDBOX/UNKNOWN chrome, live API-limit gauges, Flow faults, and a
-> one-command agent context pack. Experimental side branch; `main` is parked.
-> Open source, MIT, uses your own `sf` login — no Connected App.
+- **Wrong-org chrome.** PROD you cannot mistake for a sandbox; UNKNOWN when
+  `Organization.IsSandbox` was unreadable.
+- **Limits before they page you.** Amber → red in the bar. A miss is unknown, not
+  a healthy 0%.
+- **One paste.** `bluechip incident` is hand-off, not authorization to deploy.
+- **Reads default; TraceFlag is the only write**, confirm-gated, not MCP.
 
 Do **not** use “What does yours get?” / letter-grade-as-org-truth copy.
-
-**Omarchy community:**
-> Waybar module for Salesforce admins: Bluechip. Org pulse + PROD/SANDBOX/
-> UNKNOWN chrome + limit gauges + Flow faults, read-only over your own `sf`
-> login. `bluechip doctor` is a neofetch-style org card. Side branch, not
-> unparked main.
-
-## Notes / honesty
-
-- Flow faults are **best-effort**: hard faults roll back and may not persist as
-  `FlowInterview` rows.
-- Wave 2 also calls ObjectPermissions / FieldPermissions / PermissionSetAssignment,
-  EventLogFile, and (best-effort) `sf api request rest` for LogFile bodies.
-  **Not** Metadata retrieve/deploy. **Not** FLS apply.
-- Hygiene acceptance tests: `./scripts/test-hygiene.sh` (H1–H10). Wave 1:
-  `./tests/test-named-creds.sh`, `./tests/test-trace.sh`, `./tests/test-mcp.sh`.
-  Wave 2: `./tests/test-wave2.sh`. UX: `./tests/test-ux-pass.sh`. Hardening:
-  `./tests/test-hardening.sh`. Agent contract: [AGENTS.md](../AGENTS.md).

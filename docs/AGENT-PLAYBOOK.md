@@ -79,7 +79,7 @@ Fixture-shaped samples (no live org, no secrets): [examples/incident.sample.json
 
 1. `get_fls` with `user` (username or Id) and `fields` as `Object.Field,Object.Field`.
 2. Report **missing Read** vs **missing Edit** separately. Unknown on SOQL miss — do not invent a Setup menu or a custom field.
-3. `bluechip fls-propose --user … --fields …` is **CLI proposal only** (diff). Not an MCP tool. Apply is not in this wave.
+3. `bluechip fls-propose --user … --fields …` is **CLI proposal only** (diff). Not an MCP tool. Apply is not shipped.
 4. House rule: probe the org before inventing fields (Harris × Brutus pain #5).
 
 ## Hand off to human write
@@ -91,7 +91,7 @@ Pack must include:
 - Flow interview Id / NC API name / ApexLog Ids when relevant
 - The exact CLI the human should run (not “the agent will do it”)
 
-Confirm matrix ([VISION.md](../VISION.md#confirm-before-write-matrix)) — what this wave actually allows:
+Confirm matrix ([VISION.md](../VISION.md#confirm-before-write-matrix)) — what this tip allows:
 
 | Write | Who runs it | Gate |
 | --- | --- | --- |
@@ -99,7 +99,7 @@ Confirm matrix ([VISION.md](../VISION.md#confirm-before-write-matrix)) — what 
 | Pin (unknown) | Human CLI | Type 18-char org Id |
 | TraceFlag start/stop | Human CLI only | Sandbox: `SANDBOX` or alias (`--yes` ok). Prod: type `PROD`. Unknown: org Id. `--yes` banned on prod/unknown |
 | `fls-propose` | Human CLI | Diff only — no apply |
-| Flow activate / FLS apply / Metadata deploy | **not this wave** | Would be sandbox-first + type `PROD`; never MCP |
+| Flow activate / FLS apply / Metadata deploy | **not shipped** | Would be sandbox-first + type `PROD`; never MCP |
 
 Agent line to the human: “I did not write the org. Run `bluechip trace start` in a terminal and type the confirm string.”
 
