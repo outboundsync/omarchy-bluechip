@@ -31,6 +31,7 @@ You are editing this OS repo. Harris/Janus merge. Do not ship productization tha
 ./tests/test-plaintext.sh && ./tests/test-pin.sh
 ./tests/test-named-creds.sh && ./tests/test-trace.sh && python3 ./tests/test-mcp.sh
 ./tests/test-wave2.sh && ./tests/test-ux-pass.sh
+./tests/test-flow-build.sh
 ./tests/test-hardening.sh
 ```
 
@@ -114,6 +115,10 @@ Context pack, incident object, clipboard pack, and MCP output are **hand-off**, 
 | `get_hygiene` | Data-probe cards? Measured / unknown; no letter until measured |
 | `list_orgs` / `get_pin` | Which org is pinned? **Will not change the pin** |
 | `get_named_creds` | Named/External Cred health? **Secrets never returned** |
+| `diagnose_callout_auth` | Why 401 while curl 200? Header/formula/principal classes — never secrets |
+| `get_apex_types` | IN_/OUT_2XX property paths for Flow Assignment? |
+| `get_callout_pack` | One Flow callout hand-off (identity + auth + types + logs)? |
+| `run_preflight` | DWU / Automated Process FLS + NC principal before Activate? |
 | `list_trace_flags` / `list_apex_logs` | Flags/log metadata only — no bodies, no create/stop |
 | `get_fls` | Integration-user Read vs Edit gaps? Probe, do not invent fields |
 | `get_desk` | Multi-org pulse? Per-org `sandboxState` — never a mixed badge |

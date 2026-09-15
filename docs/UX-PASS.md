@@ -41,8 +41,8 @@ pin → pulse → probe → pack → agent → confirm write
 | --- | --- | --- |
 | **pin** | `orgs` / `pin` | which org is hot; confirm if crossing prod↔sandbox |
 | **pulse** | `bar` / `limits` / `watch` | worst signal on the chip; tables in the terminal |
-| **probe** | `hygiene` / `fls` / `named-creds` / `offenders` | measured / unknown — never invent |
-| **pack** | `incident` / `context` / `clipboard` | one object for a paste or MCP |
+| **probe** | `hygiene` / `fls` / `named-creds` / `callout-auth` / `types` / `preflight` / `offenders` | measured / unknown — never invent |
+| **pack** | `incident` / `context` / `clipboard` / `callout-pack` | one object for a paste or MCP |
 | **agent** | MCP display-only + `\| wl-copy` | brain; not write authority |
 | **confirm write** | `trace start\|stop` only | sandbox-first; type `PROD` on prod; `--yes` banned on prod / unknown |
 
@@ -53,8 +53,8 @@ Progressive disclosure:
 3. **`--json` / MCP** — full graph for an agent.
 
 Default path: **install → `sf org login web` → `bluechip doctor` → chip.**
-[DEMO.md](DEMO.md) is the 60-second script. Unfinished stubs (`types`) stay off
-default help.
+[DEMO.md](DEMO.md) is the 60-second script. Callout verbs (`types`,
+`callout-auth`, `callout-pack`, `preflight`) stay behind `help --all`.
 
 Thresholds: `BLUECHIP_WARN_PCT` (75), `BLUECHIP_CRIT_PCT` (90),
 `BLUECHIP_CACHE_TTL` (120s), `BLUECHIP_DUPE_CAP` (200).
@@ -145,7 +145,9 @@ is for tests and one-shot probes.
 
 `bluechip scratchpad` / `bin/bluechip-scratchpad`: Hyprland **special workspace**
 summon. Spawn-if-missing a terminal running `bluechip logs --follow` (or `--sf`
-for an `sf`+`jq` shell). No QML. Bind is documented, not installed.
+for an `sf`+`jq` shell). `--boundary` prints the two commands for Worker + org
+debug (`bluechip logs --follow` beside `wrangler tail`) — chip stays ambient.
+No QML. Bind is documented, not installed.
 
 ```
 bind = SUPER SHIFT, B, exec, bluechip-scratchpad
@@ -175,7 +177,9 @@ Never a silent blank where a probe ran. Use **`unknown (reason)`** vs **`none`**
 | doctor Flow faults | `unknown (reason)` | `none` |
 | doctor last change | `unknown (reason)` | `none` |
 | flows | `unknown (reason)` | `none` (plus the hard-fault caveat) |
-| named-creds | `unknown (reason)` | `(none)` |
+| named-creds / callout-auth | `unknown (reason)` | `(none)` / no 401 class |
+| types | `unknown (reason)` | `none` |
+| callout-pack / preflight | slice `unknown (reason)` | `none` |
 | desk | `unknown` per cell | `No desk orgs. Pin one…` |
 | changes | `unknown (reason)` | `none` |
 
@@ -197,6 +201,6 @@ Never a silent blank where a probe ran. Use **`unknown (reason)`** vs **`none`**
 | `bluechip incident [--json]` | One incident object |
 | `bluechip doctor --json` | Same builder as incident |
 | `bluechip watch [--jsonl] [--once]` | Deltas + optional JSONL |
-| `bluechip scratchpad` | Special-workspace helper |
+| `bluechip scratchpad` | Special-workspace helper; `--boundary` prints `logs --follow` + `wrangler tail` |
 | `bluechip changes [--json]` | Honest none / unknown |
 | `bluechip-clipboard` | Toast on success only |

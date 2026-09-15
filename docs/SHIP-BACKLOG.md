@@ -22,9 +22,15 @@ I/O actually called: [VISION.md](../VISION.md#api-honesty).
 | Clipboard → context | `bluechip clipboard`. Hyprland bind documented, not installed. |
 | Compact chip / incident / watch / scratchpad | [UX-PASS.md](UX-PASS.md) |
 | H1–H10, neutralize, 0700/0600, I/O caps | [CLEANUP-2026-09-15.md](CLEANUP-2026-09-15.md) |
+| Callout auth doctor | `bluechip callout-auth` / `named-creds --doctor`. 401 classes: `headers_absent`, `formulas_off`, `gen_auth_on_custom`, `principal_missing`, `principal_unknown`, `unknown`. Secrets never printed. |
+| Apex-defined type explorer | `bluechip types` — IN_/OUT_/2XX / ExternalService via Tooling. Property paths for Flow Assignment. |
+| Flow callout pack | `bluechip callout-pack` / `incident --callout`. Hand-off, not write authority. |
+| DWU / integration preflight | `bluechip preflight --user` (+ optional `--fields`). FLS + NC principal. Does not Activate. |
+| Boundary desk | `bluechip scratchpad --boundary` prints `logs --follow` + `wrangler tail`. No QML. |
 
 **MCP tools (display-only):** `get_context`, `get_incident`, `get_limits`,
 `list_flow_faults`, `get_hygiene`, `list_orgs` / `get_pin`, `get_named_creds`,
+`diagnose_callout_auth`, `get_apex_types`, `get_callout_pack`, `run_preflight`,
 `list_trace_flags`, `list_apex_logs`, `get_fls`, `list_offenders`, `get_desk`.
 
 **Kept everywhere:** three-valued `sandboxState`, unknown ≠ 0/100, last-good on
@@ -38,7 +44,6 @@ Work that is **not** on the tip.
 
 | Item | Why it is parked |
 | --- | --- |
-| Apex-defined type explorer | IN_/OUT_2XX HTTP-callout soup. Stub: `bluechip types`. |
 | DX drift | Sandbox vs prod vs git when DX is in play. |
 | Sharing forensics | “Why can’t X see Y?” |
 | Hosted / Connected App | Only if we leave local `sf` (remote MCP, marketplace, scopes the CLI session cannot inherit). |

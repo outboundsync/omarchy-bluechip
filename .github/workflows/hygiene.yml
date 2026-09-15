@@ -23,6 +23,10 @@ jobs:
         run: |
           chmod +x tests/test-wave2.sh
           ./tests/test-wave2.sh
+      - name: Flow-build wave (callout-auth, types, pack, preflight)
+        run: |
+          chmod +x tests/test-flow-build.sh bin/bluechip-apex-parse.py bin/bluechip-scratchpad
+          ./tests/test-flow-build.sh
       - name: UX pass (bar, incident, watch, help)
         run: |
           chmod +x tests/test-ux-pass.sh bin/bluechip-scratchpad

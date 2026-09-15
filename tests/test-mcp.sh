@@ -97,9 +97,13 @@ def main() -> int:
             "get_fls",
             "list_offenders",
             "get_desk",
+            "diagnose_callout_auth",
+            "get_apex_types",
+            "get_callout_pack",
+            "run_preflight",
         }
         if expected <= names:
-            ok("tools/list has Wave 1+2 read tools")
+            ok("tools/list has Wave 1–3 read tools")
         else:
             bad(f"missing tools: {expected - names}")
         writes = {"trace_start", "create_trace", "start_trace", "deploy", "pin_org", "fls_apply", "fls_propose"}
@@ -237,6 +241,111 @@ def main() -> int:
             ok("MCP get_fls rejects metacharacter user")
         else:
             bad(f"MCP fls user injection: {ftxt[:180]}")
+
+        doc = rpc(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": 10,
+                "method": "tools/call",
+                "params": {"name": "diagnose_callout_auth", "arguments": {}},
+            },
+        )
+        dtext = doc["result"]["content"][0]["text"]
+        try:
+            dblob = json.loads(dtext)
+        except json.JSONDecodeError:
+            bad(f"diagnose_callout_auth not JSON: {dtext[:180]}")
+        else:
+            reasons = []
+            for row in dblob.get("diagnoses") or []:
+                reasons.extend(row.get("reasons") or [])
+            if "gen_auth_on_custom" in reasons:
+                ok("diagnose_callout_auth names gen_auth_on_custom")
+            else:
+                bad(f"diagnose_callout_auth reasons: {reasons}")
+            if "SUPER_SECRET" in dtext or "ParameterValue" in dtext:
+                bad("diagnose_callout_auth leaked a secret")
+            else:
+                ok("diagnose_callout_auth has no secrets")
+
+        types = rpc(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": 11,
+                "method": "tools/call",
+                "params": {"name": "get_apex_types", "arguments": {}},
+            },
+        )
+        ttext = types["result"]["content"][0]["text"]
+        try:
+            tblob = json.loads(ttext)
+        except json.JSONDecodeError:
+            bad(f"get_apex_types not JSON: {ttext[:180]}")
+        else:
+            tnames = [c.get("name") for c in (tblob.get("classes") or [])]
+            if "IN_LeadSearch" in tnames:
+                ok("get_apex_types discovers IN_LeadSearch")
+            else:
+                bad(f"get_apex_types classes: {tnames}")
+
+        pack = rpc(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": 12,
+                "method": "tools/call",
+                "params": {"name": "get_callout_pack", "arguments": {"flow": "ZoomInfo_Callout"}},
+            },
+        )
+        ptext = pack["result"]["content"][0]["text"]
+        try:
+            pblob = json.loads(ptext)
+        except json.JSONDecodeError:
+            bad(f"get_callout_pack not JSON: {ptext[:180]}")
+        else:
+            if pblob.get("flow", {}).get("apiName") == "ZoomInfo_Callout":
+                ok("get_callout_pack flow apiName")
+            else:
+                bad(f"get_callout_pack: {ptext[:200]}")
+
+        pf = rpc(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": 13,
+                "method": "tools/call",
+                "params": {
+                    "name": "run_preflight",
+                    "arguments": {"user": "admin@example.com"},
+                },
+            },
+        )
+        pftext = pf["result"]["content"][0]["text"]
+        try:
+            pfblob = json.loads(pftext)
+        except json.JSONDecodeError:
+            bad(f"run_preflight not JSON: {pftext[:180]}")
+        else:
+            if pfblob.get("auth") is not None:
+                ok("run_preflight returns auth slice")
+            else:
+                bad(f"run_preflight: {pftext[:200]}")
+
+        bad_flow = rpc(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": 14,
+                "method": "tools/call",
+                "params": {"name": "get_callout_pack", "arguments": {"flow": "Bad;rm"}},
+            },
+        )
+        if bad_flow["result"].get("isError"):
+            ok("MCP get_callout_pack rejects bad flow name")
+        else:
+            bad("MCP get_callout_pack accepted injected flow name")
     finally:
         proc.kill()
         proc.wait(timeout=5)

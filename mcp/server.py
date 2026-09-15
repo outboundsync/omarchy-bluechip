@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 PROTOCOL = "2024-11-05"
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 NAME = "bluechip"
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -24,6 +24,7 @@ BLUECHIP = os.environ.get("BLUECHIP_BIN", str(DEFAULT_BIN))
 ORG_ALIAS_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
 USER_RE = re.compile(r"^[A-Za-z0-9._%+\-@]{1,255}$")
 FIELD_REF_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,79}\.[A-Za-z][A-Za-z0-9_]{0,79}$")
+API_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,79}$")
 SINCE_RE = re.compile(
     r"^(?:9am|[0-9]{1,2}(?::[0-9]{2})?(?:am|pm)?|[0-9]{4}-[0-9]{2}-[0-9]{2}"
     r"(?:[T ][0-9]{2}:[0-9]{2}(?::[0-9]{2})?(?:Z|[+-][0-9]{2}:?[0-9]{2})?)?)$",
@@ -79,9 +80,35 @@ def _org_args(arguments: dict) -> list[str]:
 
 def _validate_fls_user(user: str) -> str:
     u = user.strip()
+    special = {
+        "automatedprocess",
+        "automated process",
+        "automated_process",
+        "autoproc",
+        "defaultworkflowuser",
+        "default workflow user",
+        "default_workflow_user",
+        "dwu",
+    }
+    if u.lower() in special:
+        return u
     if not USER_RE.match(u) or any(ch in u for ch in ";|&$`\n\r"):
         raise ValueError("user must be a username or Salesforce id")
     return u
+
+
+def _validate_api_name(name: str, label: str) -> str:
+    n = name.strip()
+    if not API_NAME_RE.match(n):
+        raise ValueError(f"{label} must be a Salesforce API name")
+    return n
+
+
+def _validate_api_names(raw: str, label: str) -> list[str]:
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    if len(parts) > 30:
+        raise ValueError(f"too many {label} (max 30)")
+    return [_validate_api_name(p, label) for p in parts]
 
 
 def _validate_fls_fields(fields: str) -> str:
@@ -216,6 +243,62 @@ TOOLS = [
         "description": "Multi-org desk pulse (`bluechip desk --json`). Each org has its own sandboxState — never a mixed badge.",
         "inputSchema": {"type": "object", "properties": {}},
     },
+    {
+        "name": "diagnose_callout_auth",
+        "description": "Named / External Credential 401-class doctor (`bluechip callout-auth --json`). headers_absent / formulas_off / gen_auth_on_custom / principal_* / unknown. Never returns secrets.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "org": {"type": "string"},
+                "user": {
+                    "type": "string",
+                    "description": "Optional username, id, AutomatedProcess, or DefaultWorkflowUser for principal access",
+                },
+            },
+        },
+    },
+    {
+        "name": "get_apex_types",
+        "description": "Apex-defined / HTTP Callout type explorer (`bluechip types --json`). Property paths for Flow Assignment. Display-only.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "org": {"type": "string"},
+                "names": {
+                    "type": "string",
+                    "description": "Optional comma-separated Apex class names; omit to discover IN_/OUT_/2XX / ExternalService",
+                },
+            },
+        },
+    },
+    {
+        "name": "get_callout_pack",
+        "description": "Flow callout hand-off pack (`bluechip callout-pack --json`). Flow identity + auth doctor + types + ApexLog ids. Not write authority.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "org": {"type": "string"},
+                "flow": {"type": "string", "description": "Flow API name"},
+            },
+            "required": ["flow"],
+        },
+    },
+    {
+        "name": "run_preflight",
+        "description": "DWU / Automated Process / integration-user preflight (`bluechip preflight --json`). FLS + NC principal checks. Display-only; does not Activate.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "org": {"type": "string"},
+                "user": {"type": "string", "description": "Username, id, AutomatedProcess, or DefaultWorkflowUser"},
+                "fields": {
+                    "type": "string",
+                    "description": "Optional comma-separated Object.Field API names",
+                },
+            },
+            "required": ["user"],
+        },
+    },
 ]
 
 
@@ -273,6 +356,65 @@ def call_tool(name: str, arguments: dict | None) -> dict:
 
     if name == "get_desk":
         code, out, err = _bluechip("--json", "desk")
+        text = out if out.strip() else err
+        return _text_result(text or "{}", is_error=code != 0)
+
+    if name == "diagnose_callout_auth":
+        extra = ["--json", "callout-auth"]
+        user = arguments.get("user")
+        if isinstance(user, str) and user.strip():
+            try:
+                extra.extend(["--user", _validate_fls_user(user)])
+            except ValueError as exc:
+                return _text_result(str(exc), is_error=True)
+        code, out, err = _bluechip(*org, *extra)
+        text = out if out.strip() else err
+        return _text_result(text or "{}", is_error=code != 0)
+
+    if name == "get_apex_types":
+        extra = ["--json", "types"]
+        names = arguments.get("names")
+        if isinstance(names, list):
+            names = ",".join(str(n) for n in names)
+        if isinstance(names, str) and names.strip():
+            try:
+                extra.extend(_validate_api_names(names, "class name"))
+            except ValueError as exc:
+                return _text_result(str(exc), is_error=True)
+        code, out, err = _bluechip(*org, *extra)
+        text = out if out.strip() else err
+        return _text_result(text or "{}", is_error=code != 0)
+
+    if name == "get_callout_pack":
+        flow = arguments.get("flow")
+        if not isinstance(flow, str) or not flow.strip():
+            return _text_result("flow is required", is_error=True)
+        try:
+            flow = _validate_api_name(flow, "flow")
+        except ValueError as exc:
+            return _text_result(str(exc), is_error=True)
+        code, out, err = _bluechip(*org, "--json", "callout-pack", flow)
+        text = out if out.strip() else err
+        return _text_result(text or "{}", is_error=code != 0)
+
+    if name == "run_preflight":
+        user = arguments.get("user")
+        if not isinstance(user, str) or not user.strip():
+            return _text_result("user is required", is_error=True)
+        try:
+            user = _validate_fls_user(user)
+        except ValueError as exc:
+            return _text_result(str(exc), is_error=True)
+        extra = ["--json", "preflight", "--user", user]
+        fields = arguments.get("fields")
+        if isinstance(fields, list):
+            fields = ",".join(str(f) for f in fields)
+        if isinstance(fields, str) and fields.strip():
+            try:
+                extra.extend(["--fields", _validate_fls_fields(fields)])
+            except ValueError as exc:
+                return _text_result(str(exc), is_error=True)
+        code, out, err = _bluechip(*org, *extra)
         text = out if out.strip() else err
         return _text_result(text or "{}", is_error=code != 0)
 

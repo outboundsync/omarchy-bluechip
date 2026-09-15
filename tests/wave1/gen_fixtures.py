@@ -130,7 +130,71 @@ APEX_LOG = {
     "Application": "Unknown",
 }
 
-USER = {"Id": "005000000000001AAA"}
+USER = {
+    "Id": "005000000000001AAA",
+    "Username": "admin@example.com",
+    "Name": "Admin User",
+    "ProfileId": "00e000000000001AAA",
+    "Profile": {"Name": "System Administrator"},
+    "IsActive": True,
+}
+
+APEX_IN = {
+    "Id": "01p000000000001AAA",
+    "Name": "IN_LeadSearch",
+    "NamespacePrefix": None,
+    "Status": "Active",
+    "ApiVersion": 62.0,
+    "LastModifiedDate": "2026-09-14T00:00:00.000+0000",
+    "Body": (
+        "// Authorization: Bearer SHOULD_NEVER\n"
+        "public class IN_LeadSearch {\n"
+        "  public String company;\n"
+        "  public String domain;\n"
+        "  public class Address { public String city; }\n"
+        "  public Address address;\n"
+        "}\n"
+    ),
+    "SymbolTable": {
+        "name": "IN_LeadSearch",
+        "properties": [
+            {"name": "company", "type": "String", "visibility": "PUBLIC"},
+            {"name": "domain", "type": "String", "visibility": "PUBLIC"},
+            {"name": "address", "type": {"name": "Address"}, "visibility": "PUBLIC"},
+        ],
+        "innerClasses": [
+            {
+                "name": "Address",
+                "properties": [{"name": "city", "type": "String", "visibility": "PUBLIC"}],
+            }
+        ],
+    },
+}
+
+APEX_OUT = {
+    "Id": "01p000000000002AAA",
+    "Name": "OUT_2XX",
+    "NamespacePrefix": None,
+    "Status": "Active",
+    "ApiVersion": 62.0,
+    "LastModifiedDate": "2026-09-14T00:00:00.000+0000",
+    "Body": "public class OUT_2XX {\n  public Integer id;\n  public String status;\n}\n",
+    "SymbolTable": {
+        "name": "OUT_2XX",
+        "properties": [
+            {"name": "id", "type": "Integer", "visibility": "PUBLIC"},
+            {"name": "status", "type": "String", "visibility": "PUBLIC"},
+        ],
+        "innerClasses": [],
+    },
+}
+
+FLOW_DEF = {
+    "Id": "300000000000002AAA",
+    "DeveloperName": "ZoomInfo_Callout",
+    "MasterLabel": "ZoomInfo Callout",
+    "ActiveVersionId": "301000000000002AAA",
+}
 
 
 def write_common(d: Path, *, alias: str, sandbox: bool, org_id: str) -> dict:
@@ -172,6 +236,23 @@ def emit(root: Path) -> None:
     write(d / "create-tf.json", ok({"id": "7tf000000000009AAA", "success": True}))
     write(d / "create-dl.json", ok({"id": "7dl000000000009AAA", "success": True}))
     write(d / "delete-tf.json", ok({"id": "7tf000000000001AAA", "success": True}))
+    write(d / "apex-class.json", records(APEX_IN, APEX_OUT))
+    write(d / "flowdef.json", records(FLOW_DEF))
+    write(d / "esr.json", records())
+    write(
+        d / "ecpa.json",
+        records(
+            {
+                "Id": "0ea000000000001AAA",
+                "ParentId": "0PS000000000001AAA",
+                "ExternalCredentialPrincipalId": "0xp000000000001AAA",
+            }
+        ),
+    )
+    write(
+        d / "psa.json",
+        records({"PermissionSetId": "0PS000000000001AAA"}),
+    )
     mp.update(
         {
             "tooling.query.NamedCredential": "named-credential.json",
@@ -189,6 +270,16 @@ def emit(root: Path) -> None:
             "tooling.create.TraceFlag": "create-tf.json",
             "tooling.create.DebugLevel": "create-dl.json",
             "tooling.delete.TraceFlag": "delete-tf.json",
+            "tooling.query.ApexClass": "apex-class.json",
+            "tooling.query.ApexClass.list": "apex-class.json",
+            "tooling.query.FlowDefinition": "flowdef.json",
+            "tooling.query.FlowDefinition.list": "flowdef.json",
+            "tooling.query.ExternalServiceRegistration": "esr.json",
+            "tooling.query.ExternalServiceRegistration.list": "esr.json",
+            "query.ExternalCredentialPrincipalAccess.other": "ecpa.json",
+            "tooling.query.ExternalCredentialPrincipalAccess": "ecpa.json",
+            "tooling.query.ExternalCredentialPrincipalAccess.list": "ecpa.json",
+            "query.PermissionSetAssignment.other": "psa.json",
         }
     )
     write(d / "map.json", mp)

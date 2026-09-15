@@ -16,7 +16,7 @@
 #   --no-color          Plain output
 set -o pipefail
 
-BLUECHIP_VERSION="1.3.0"
+BLUECHIP_VERSION="1.4.0"
 SF_BIN="${BLUECHIP_SF:-sf}"
 DUPE_GROUP_CAP="${BLUECHIP_DUPE_CAP:-200}"
 SNAPSHOT_ERROR=""
@@ -805,6 +805,8 @@ source "$(dirname "$_bluechip_self")/bluechip-offenders.inc"
 source "$(dirname "$_bluechip_self")/bluechip-desk.inc"
 # shellcheck source=bluechip-incident.inc
 source "$(dirname "$_bluechip_self")/bluechip-incident.inc"
+# shellcheck source=bluechip-callout.inc
+source "$(dirname "$_bluechip_self")/bluechip-callout.inc"
 
 ascii_logo() {
   cat <<'EOF'
@@ -920,20 +922,6 @@ cmd_mcp_config() {
 EOF
 }
 
-cmd_wave2_stub() {
-  local name="$1"
-  cat <<EOF
-bluechip: '$name' is not in this wave.
-
-See docs/SHIP-BACKLOG.md — later:
-  types       Apex-defined type explorer (Tooling Apex Class / Flow retrieve)
-
-Wave 2 shipped: fls, fls-propose, offenders, desk, bar --all, clipboard.
-TraceFlag create is CLI-only (bluechip trace start). MCP stays display-only.
-EOF
-  return 2
-}
-
 cmd_help() {
   local all=0
   while [[ $# -gt 0 ]]; do
@@ -983,18 +971,20 @@ ${BOLD}ADVANCED${RESET}
   ${CYAN}changes${RESET}         Recent Setup Audit Trail (--json)
   ${CYAN}clipboard${RESET}       Clipboard → context pack (toast on success only)
   ${CYAN}named-creds${RESET}     Named / External Credential inspector (never secrets)
+  ${CYAN}callout-auth${RESET}    NC 401-class doctor (also named-creds --doctor)
+  ${CYAN}types${RESET}           Apex-defined / HTTP Callout type explorer (read-only)
+  ${CYAN}callout-pack${RESET}    Flow callout hand-off pack (not write authority)
+  ${CYAN}preflight${RESET}       DWU / Automated Process FLS + NC principal checks
   ${CYAN}fls${RESET}             FLS / perm-set matrix --user --fields (read-only)
   ${CYAN}fls-propose${RESET}     FLS proposal diff only (does not apply)
   ${CYAN}offenders${RESET}       Limit offenders since 9am (Event Log; unknown if unavailable)
   ${CYAN}desk${RESET}            Multi-org pulse (per-org chrome)
   ${CYAN}trace${RESET}           start | status | stop — confirm-gated TraceFlag (CLI only)
   ${CYAN}logs${RESET}            Recent ApexLog [--follow] [--body]
-  ${CYAN}scratchpad${RESET}      Hyprland special workspace (logs --follow / --sf)
+  ${CYAN}scratchpad${RESET}      Hyprland special workspace (logs --follow / --sf / --boundary)
   ${CYAN}refresh${RESET}         Force-refresh the cached snapshot
   ${CYAN}mcp-config${RESET}      Print Cursor/Claude MCP stdio snippet
   ${CYAN}version${RESET}
-
-${BOLD}LATER${RESET}  ${DIM}types — Apex-defined type explorer; QML panel (Fabius). docs/SHIP-BACKLOG.md${RESET}
 EOF
   else
     printf '\n%sMore verbs: bluechip help --all · product SoT: docs/UX-PASS.md%s\n' "$DIM" "$RESET"
@@ -1017,6 +1007,10 @@ case "$CMD" in
   incident)  cmd_incident "$@" ;;
   context)   cmd_context "$@" ;;
   named-creds|named-credentials|nc) cmd_named_creds "$@" ;;
+  callout-auth|callout_auth) cmd_callout_auth "$@" ;;
+  types)     cmd_types "$@" ;;
+  callout-pack|callout_pack) cmd_callout_pack "$@" ;;
+  preflight) cmd_preflight "$@" ;;
   fls)       cmd_fls "$@" ;;
   fls-propose|fls_propose) cmd_fls_propose "$@" ;;
   offenders) cmd_offenders "$@" ;;
@@ -1027,7 +1021,6 @@ case "$CMD" in
   logs)      cmd_logs "$@" ;;
   watch)     cmd_watch "$@" ;;
   mcp-config|mcp) cmd_mcp_config "$@" ;;
-  types)     cmd_wave2_stub "$CMD" ;;
   refresh)   FORCE_REFRESH=1; load_snapshot >/dev/null && echo "Snapshot refreshed." ;;
   version|-v|--version) echo "bluechip $BLUECHIP_VERSION" ;;
   help|-h|--help|"") cmd_help "$@" ;;
