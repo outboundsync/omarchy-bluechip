@@ -1,0 +1,75 @@
+{
+  "_sample": true,
+  "_source": "tests/wave1 fixture `ok` via `bluechip incident --json`. Fixture org ids and NC API names only — no live org, no secrets, markdown elided.",
+  "ok": true,
+  "availability": "ok",
+  "sandboxState": "sandbox",
+  "org": {
+    "id": "00D000000000002AAA",
+    "sandboxState": "sandbox",
+    "alias": "sbx"
+  },
+  "env": "SANDBOX",
+  "signal": {
+    "kind": "limit",
+    "label": "DailyApiRequests",
+    "text": "20%",
+    "severity": "ok",
+    "peakPct": 20,
+    "faults": 0,
+    "faultsAvailability": "ok"
+  },
+  "limits": {
+    "availability": "ok",
+    "headlines": [
+      {
+        "used": 2000,
+        "max": 10000,
+        "pct": 20,
+        "name": "DailyApiRequests"
+      }
+    ],
+    "error": null
+  },
+  "flowFaults": {
+    "availability": "ok",
+    "count": 0,
+    "interviews": [],
+    "note": "best-effort — hard faults may not persist",
+    "error": null
+  },
+  "changes": {
+    "availability": "ok",
+    "records": [],
+    "error": null
+  },
+  "namedCreds": {
+    "availability": "ok",
+    "namedCount": 1,
+    "externalCount": 1,
+    "namedApiNames": ["ZoomInfo_NC"],
+    "externalApiNames": ["OutboundSync_EC"],
+    "warnings": [],
+    "reason": null
+  },
+  "logs": {
+    "availability": "ok",
+    "recent": [
+      {
+        "id": "07L000000000001AAA",
+        "operation": "ApexDebug",
+        "status": "Success",
+        "startTime": "2026-09-15T12:05:00.000+0000",
+        "logLength": 120
+      }
+    ],
+    "error": null
+  },
+  "hygiene": {
+    "availability": "unknown",
+    "reason": "not_run",
+    "grade": null,
+    "score": null
+  },
+  "error": null
+}

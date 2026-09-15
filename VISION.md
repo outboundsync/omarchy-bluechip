@@ -115,7 +115,8 @@ Harris authorized ship **2026-09-15**. `bluechip-v1` is the **active build tip**
 rewrite `main`. No Connected App, no QML scaffold, no marketplace listing until
 a later wave requires them. Wave 1 rides `sf` + Tooling-via-`sf`.
 
-See [docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md).
+See [docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md). Agent contract on this tip:
+[AGENTS.md](AGENTS.md) (do not promote this branch to `main` from a docs PR).
 
 ## Secrets / cache
 

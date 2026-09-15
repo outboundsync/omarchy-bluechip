@@ -11,7 +11,8 @@ Wave 2 on this tip: FLS / perm-set matrix (read + proposal-only), Event Log
 offenders, multi-org desk, clipboard → context. UX pass (same tip): compact
 chip, incident object, watch deltas, scratchpad — [docs/UX-PASS.md](docs/UX-PASS.md).
 TraceFlag remains the only confirm-gated org write. Ranked remainder:
-[docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md).
+[docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md). Agent contract (coding + runtime):
+[AGENTS.md](AGENTS.md). Recipes: [docs/AGENT-PLAYBOOK.md](docs/AGENT-PLAYBOOK.md).
 
 Connected App / QML / marketplace listing remain parked until a later wave
 needs them. Wave 1 rides `sf` CLI + Tooling-via-`sf` — no Connected App.

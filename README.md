@@ -31,6 +31,14 @@ Harness UX (chip, verbs, incident, watch): [docs/UX-PASS.md](docs/UX-PASS.md).
 
 Beachhead shipped. Wave 2 adds FLS probe, limit offenders, multi-org desk, and clipboard → context.
 
+## For agents
+
+Two audiences, one contract: **[AGENTS.md](AGENTS.md)**. Recipes (which MCP tool /
+CLI verb for which triage question): **[docs/AGENT-PLAYBOOK.md](docs/AGENT-PLAYBOOK.md)**.
+
+- **Coding this repo:** tip is `bluechip-v1`; do not silently rewrite `main`. H1–H10 + hardening must stay green.
+- **Using Bluechip at the desk:** packs are hand-off, not write authority. MCP is display-only.
+
 ## Why
 
 Omarchy's early users are technical, agent-native, allergic to browser tax —
@@ -278,6 +286,7 @@ and [VISION.md](VISION.md).
 ./tests/test-plaintext.sh && ./tests/test-pin.sh
 ./tests/test-named-creds.sh && ./tests/test-trace.sh && python3 ./tests/test-mcp.sh
 ./tests/test-wave2.sh && ./tests/test-ux-pass.sh
+./tests/test-hardening.sh   # caps, 0700/0600, symlink refuse, SELECT grep, cache TTL (PR #9)
 ```
 
 No live org required (stub `sf` JSON fixtures).

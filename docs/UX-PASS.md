@@ -1,13 +1,14 @@
 # Bluechip UX pass — harness product SoT
 
 Harris **2026-09-15**. This file is the product source of truth for the
-Omarchy cockpit **as a UNIX harness**, not a QML app. Code on `bluechip-v1`
-implements this pass in the same PR as the doc. Do not split docs-only vs
-code.
+Omarchy cockpit **as a UNIX harness**, not a QML app. This pass **shipped on
+`bluechip-v1`** ([PR #8](https://github.com/outboundsync/omarchy-bluechip/pull/8)).
+Agent contract for the composer pipeline: [AGENTS.md](../AGENTS.md). Recipes:
+[AGENT-PLAYBOOK.md](AGENT-PLAYBOOK.md).
 
 MIT cockpit ≠ paid OutboundSync hygiene SKU. TraceFlag remains the only org
 write. MCP stays display-only. Quattro / QML marketplace plugin is **later
-Fabius polish** — not this PR.
+Fabius polish** — not this wave.
 
 ---
 
@@ -78,7 +79,7 @@ second UI framework.
 
 ---
 
-## Ten polish items (this PR)
+## Ten polish items (shipped)
 
 ### 1. One chip, three reads
 
@@ -197,6 +198,7 @@ Documented here and in README, short:
 **`pin → pulse → probe → pack → agent → confirm write`**
 
 Agents do not skip to write. Context / incident packs are not authorization.
+Contract: [AGENTS.md](../AGENTS.md). Recipes: [AGENT-PLAYBOOK.md](AGENT-PLAYBOOK.md).
 
 ### 9. Simplify the default path
 
@@ -208,7 +210,7 @@ Agents do not skip to write. Context / incident packs are not authorization.
 `docs/DEMO.md` stays a **60-second walkthrough**. README stops duplicating the
 script; it links here + DEMO. Unfinished stubs (`types`) stay off default help.
 
-### 10. Extend later (not this PR)
+### 10. Extend later (not this wave)
 
 - Apex type explorer (`bluechip types`)
 - Connected App / hosted MCP
