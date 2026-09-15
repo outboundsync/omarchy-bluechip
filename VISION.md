@@ -45,7 +45,7 @@ Hard rules:
 - **Context pack is not write authority.** Agents are display-only unless this matrix is satisfied in the Bluechip UI.
 - Hosted SObject MCP writes (if any) are out of scope until a Tooling/Metadata call exists.
 
-v1 Salesforce writes: none. Local pin / Waybar style.css are not org writes.
+Wave 1 Salesforce writes: TraceFlag start/stop (and DebugLevel create if missing), confirm-gated. Local pin / Waybar style.css are not org writes. MCP has no write tools.
 
 ## Pillars
 
@@ -108,7 +108,12 @@ The admin at a sharp tech company opens Omarchy and sees: which org is hot, whic
 
 ## Park rule
 
-`main` stays parked until Harris unparks. `bluechip-v1` is an experimental side branch, not the product of record. No Connected App, no QML scaffold, no marketplace listing until unpark.
+Harris authorized ship **2026-09-15**. `bluechip-v1` is the **active build tip**.
+`main` may still hold this parked vision until a later promote — do not silently
+rewrite `main`. No Connected App, no QML scaffold, no marketplace listing until
+a later wave requires them. Wave 1 rides `sf` + Tooling-via-`sf`.
+
+See [docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md).
 
 ## Secrets / cache
 
@@ -153,13 +158,17 @@ Real friction already felt — not hypothetical:
 
 Do not say “Tooling” until a Tooling call exists.
 
-| Call | Vision | `bluechip-v1` today |
+| Call | Vision | `bluechip-v1` Wave 1 |
 | --- | --- | --- |
 | `sf org display` | identity | **yes** |
 | `sf org list` / `sf org list limits` | limits pulse | **yes** (limits miss → unknown, not 0% green) |
-| `sf data query` (SOQL / REST) | Organization, FlowInterview, SetupAuditTrail, ApexLog, hygiene aggregates | **yes** |
+| `sf data query` (SOQL / REST) | Organization, FlowInterview, SetupAuditTrail, ApexLog, hygiene aggregates | **yes** (+ User for TraceFlag target) |
 | `sf sobject describe` | probe-before-invent / FLS | **yes** (hygiene, before COUNT) |
-| Tooling (`TraceFlag`, Flow definition, NC/EC, FieldPermissions) | required for pillars 2, 4, 5 | **not called** |
+| Tooling `NamedCredential` / `ExternalCredential` | NC inspector | **yes** (safe fields + parameter *counts*; never secrets) |
+| Tooling `TraceFlag` / `DebugLevel` | debug-before-activate | **yes** (status read; start/stop confirm-gated CLI) |
+| Tooling Flow definition / FieldPermissions | Flow replay, FLS matrix | **not called** (Wave 2+) |
+| `sf apex get log` | log tail | **yes** (neutralized, capped) |
+| Metadata `list` (NC/EC names) | fallback when Tooling misses | **yes** — names only |
 | Metadata retrieve/deploy | confirm-gated writes | **not called** |
 
 ### Agent leverage on this desk

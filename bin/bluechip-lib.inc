@@ -59,9 +59,16 @@ org_id_trunc() {
 }
 
 # sandboxState for a snapshot: prod | sandbox | unknown
+# Do not use ${1:-{}} — bash parses that as ${1:-{} + a leftover `}`, so jq
+# reads one object then fails on the extra brace and we echo a second line.
 sandbox_state() {
-  jq -r 'if (.org | has("IsSandbox")) then (if .org.IsSandbox then "sandbox" else "prod" end) else "unknown" end' <<<"${1:-{}}" 2>/dev/null \
-    || echo unknown
+  local snap="${1-}" out
+  [[ -n "$snap" ]] || snap='{}'
+  out="$(jq -r 'if (.org | has("IsSandbox")) then (if .org.IsSandbox then "sandbox" else "prod" end) else "unknown" end' <<<"$snap" 2>/dev/null)" || out=""
+  case "$out" in
+    sandbox|prod) printf '%s' "$out" ;;
+    *) printf 'unknown' ;;
+  esac
 }
 
 # Fetch sandboxState + org id for an org alias via sf (does not change pin).
@@ -159,4 +166,115 @@ pin_confirm_switch() {
   fi
   printf 'bluechip: pin refused — confirmation did not match.\n' >&2
   return 1
+}
+
+# Salesforce org alias / username / record id — never interpolate raw CLI args into SOQL.
+org_alias_ok() { [[ "$1" =~ ^[A-Za-z0-9._-]{1,80}$ ]]; }
+sf_record_id_ok() { [[ "$1" =~ ^[a-zA-Z0-9]{15}([a-zA-Z0-9]{3})?$ ]]; }
+
+soql_escape_literal() {
+  local s="${1:-}"
+  s="${s//\\/\\\\}"
+  s="${s//\'/\\\'}"
+  printf '%s' "$s"
+}
+
+# Drop query/fragment so Named Credential endpoints never leak tokens.
+strip_url_secrets() {
+  local u="${1:-}"
+  u="${u%%\?*}"
+  u="${u%%#*}"
+  neutralize_plaintext "$u" 256
+}
+
+# Org identity blob for --json surfaces (three-valued sandboxState).
+org_json_blob() {
+  local snap="${1:-}"
+  if [[ -z "$snap" ]]; then
+    jq -nc '{id:null,sandboxState:"unknown",alias:null}'
+    return
+  fi
+  jq -n --arg id "$(org_id "$snap")" --arg st "$(sandbox_state "$snap")" \
+    --arg alias "$(jq -r '.display.alias // empty' <<<"$snap")" \
+    '{
+       id: (if $id == "unknown" or $id == "" then null else $id end),
+       sandboxState: $st,
+       alias: (if $alias == "" then null else $alias end)
+     }'
+}
+
+probe_error_json() {
+  local code="$1" message="$2"
+  jq -nc --arg code "$code" --arg msg "$message" \
+    '{
+       ok: false,
+       availability: "unknown",
+       org: {id:null, sandboxState:"unknown", alias:null},
+       error: {code:$code, message:$msg}
+     }'
+}
+
+# Strip secret-shaped keys from any JSON (defense in depth — we also never SELECT them).
+redact_secrets_json() {
+  jq '
+    def banned:
+      ascii_downcase as $d
+      | ($d == "password" or $d == "consumersecret" or $d == "clientsecret"
+         or $d == "clientid" or $d == "accesstoken" or $d == "oauthtoken"
+         or $d == "oauthrefreshtoken" or $d == "awsaccesssecret" or $d == "awsaccesskey"
+         or $d == "authorization" or $d == "secret" or $d == "privatekey"
+         or $d == "parametervalue" or $d == "metadata" or $d == "oauthscope"
+         or ($d | test("secret|password|accesstoken|oauthrefresh|privatekey")));
+    walk(if type == "object" then with_entries(select(.key | banned | not)) else . end)
+  '
+}
+
+# Confirm-gated org write. Ban silent --yes on prod and unknown.
+# Args: <action> <sandboxState> <orgId> <alias>
+# Honors WANT_YES=1 only when sandboxState == sandbox.
+write_confirm() {
+  local action="$1" state="$2" oid="$3" alias="$4"
+  local typed expect prompt
+
+  if [[ "${WANT_YES:-0}" == "1" ]]; then
+    if [[ "$state" == "sandbox" ]]; then
+      return 0
+    fi
+    die "silent --yes is banned on ${state} (action: $action). Type the confirm string instead."
+  fi
+
+  case "$state" in
+    sandbox)
+      expect="${alias:-SANDBOX}"
+      prompt="Confirm ${action} on SANDBOX. Type SANDBOX or alias '${expect}' : "
+      typed="$(pin_read_confirm "$prompt")" || true
+      typed="$(neutralize_plaintext "$typed" 256)"
+      if [[ "$typed" == "SANDBOX" || "$typed" == "$expect" || ( -n "$alias" && "$typed" == "$alias" ) ]]; then
+        return 0
+      fi
+      printf 'bluechip: %s refused — confirmation did not match.\n' "$action" >&2
+      return 1
+      ;;
+    prod)
+      prompt="Confirm ${action} on PROD. Type PROD : "
+      typed="$(pin_read_confirm "$prompt")" || true
+      typed="$(neutralize_plaintext "$typed" 256)"
+      if [[ "$typed" == "PROD" ]]; then
+        return 0
+      fi
+      printf 'bluechip: %s refused — type PROD to write on production.\n' "$action" >&2
+      return 1
+      ;;
+    *)
+      sf_org_id_ok "$oid" || die "cannot ${action}: org environment unknown and org Id unreadable"
+      prompt="Org environment unknown. Type the 18-character org Id to confirm ${action}: "
+      typed="$(pin_read_confirm "$prompt")" || true
+      typed="$(neutralize_plaintext "$typed" 256)"
+      if [[ "$typed" == "$oid" ]]; then
+        return 0
+      fi
+      printf 'bluechip: %s refused — org Id did not match.\n' "$action" >&2
+      return 1
+      ;;
+  esac
 }

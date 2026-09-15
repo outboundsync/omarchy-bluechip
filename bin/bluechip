@@ -13,6 +13,9 @@
 #   flows             Recent errored / paused Flow interviews (best-effort)
 #   changes           What changed recently (Setup Audit Trail)
 #   context           Paste-ready incident bundle for Claude / Cursor / any agent
+#   named-creds       Named / External Credential inspector (no secrets)
+#   trace start|status|stop   Confirm-gated TraceFlag (CLI only; not MCP)
+#   logs [--follow]   Tail recent ApexLog (neutralized, size-capped)
 #   watch [seconds]   Notify (mako) on amber→red limits or new flow faults
 #   refresh           Force-refresh the cached org snapshot
 #   version | help
@@ -20,10 +23,12 @@
 # Global options:
 #   -o, --org <alias>   Act on this org for one command (overrides the pin)
 #   --refresh           Ignore cache and re-query Salesforce
+#   --json              Machine-readable JSON on supported commands
+#   --yes               Confirm writes on sandbox only (banned on prod)
 #   --no-color          Plain output
 set -o pipefail
 
-BLUECHIP_VERSION="1.0.1"
+BLUECHIP_VERSION="1.1.0"
 SF_BIN="${BLUECHIP_SF:-sf}"
 DUPE_GROUP_CAP="${BLUECHIP_DUPE_CAP:-200}"
 SNAPSHOT_ERROR=""
@@ -131,6 +136,11 @@ classify_sf_error() {
     echo object_forbidden; return
   fi
   if [[ "$mix" == *'no such column'* || "$mix" == *'invalid field'* ]]; then echo invalid_field; return; fi
+  if [[ "$mix" == *'unknown command'* || "$mix" == *'unexpected argument'* \
+     || "$mix" == *'is not a sf command'* || "$mix" == *'nonexistent flag'* \
+     || "$name" == "UNSUPPORTED" ]]; then
+    echo unsupported; return
+  fi
   echo transient
 }
 
@@ -139,12 +149,16 @@ classify_sf_error() {
 # ---------------------------------------------------------------------------
 ORG_OVERRIDE=""
 FORCE_REFRESH=0
+WANT_JSON=0
+WANT_YES=0
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -o|--org)     ORG_OVERRIDE="${2:-}"; shift 2 ;;
     --org=*)      ORG_OVERRIDE="${1#*=}"; shift ;;
     --refresh)    FORCE_REFRESH=1; shift ;;
+    --json)       WANT_JSON=1; shift ;;
+    --yes)        WANT_YES=1; shift ;;
     --no-color)   USE_COLOR=0; RESET=""; BOLD=""; DIM=""; RED=""; GREEN=""; YELLOW=""; BLUE=""; CYAN=""; GREY=""; shift ;;
     --)           shift; while [[ $# -gt 0 ]]; do POSITIONAL+=("$1"); shift; done ;;
     *)            POSITIONAL+=("$1"); shift ;;
@@ -378,8 +392,33 @@ cmd_bar() {
 cmd_orgs() {
   have_sf || die "sf CLI not found. Install @salesforce/cli and run: sf org login web"
   local result pin
-  result="$(sf_json org list)" || die "could not list orgs (is sf configured?)"
+  result="$(sf_json org list)" || {
+    if [[ "${WANT_JSON:-0}" -eq 1 ]]; then
+      probe_error_json transient "could not list orgs"
+      return 1
+    fi
+    die "could not list orgs (is sf configured?)"
+  }
   pin="$(pinned_org)"
+  if [[ "${WANT_JSON:-0}" -eq 1 ]]; then
+    jq -n --arg pin "$pin" --argjson r "$result" '
+      {
+        ok: true,
+        pinnedOrg: (if $pin == "" then null else $pin end),
+        orgs: (
+          ([ $r.nonScratchOrgs?, $r.sandboxes?, $r.scratchOrgs?, $r.devHubs? ] | map(. // []) | add)
+          | map({
+              alias: (.alias // ""),
+              username: (.username // "?"),
+              status: (.connectedStatus // .status // ""),
+              isDefault: (.isDefaultUsername // false),
+              pinned: ((.alias // "") != "" and (.alias == $pin))
+            })
+        ),
+        error: null
+      }'
+    return 0
+  fi
   printf '%s\n' "${BOLD}Salesforce orgs${RESET} ${DIM}(★ = pinned for bluechip)${RESET}"
   # nonScratchOrgs + sandboxes + scratchOrgs, flatten what exists.
   jq -r '
@@ -402,6 +441,14 @@ cmd_pin() {
   [[ -f "$STATE_FILE" ]] || echo '{}' | write_secure "$STATE_FILE"
   if [[ -z "$alias" ]]; then
     local cur; cur="$(pinned_org)"
+    if [[ "${WANT_JSON:-0}" -eq 1 ]]; then
+      local snap blob
+      snap="$(load_snapshot 2>/dev/null)" || snap=""
+      blob="$(org_json_blob "$snap")"
+      jq -n --arg pin "$cur" --argjson org "$blob" \
+        '{ok:true,pinnedOrg:(if $pin=="" then null else $pin end),org:$org,error:null}'
+      return 0
+    fi
     printf 'Pinned org: %s\n' "${cur:-<none — using sf default>}"
     return 0
   fi
@@ -441,6 +488,29 @@ bar_gauge() { # <pct> <width> -> ■■■■□□□□  (colored)
 cmd_limits() {
   have_sf || die "sf CLI not found."
   local snap; snap="$(load_snapshot)" || die "could not read org limits."
+  if [[ "${WANT_JSON:-0}" -eq 1 ]]; then
+    local lav
+    lav="$(jq -r '.limitsAvailability // "ok"' <<<"$snap")"
+    jq -n --argjson org "$(org_json_blob "$snap")" --argjson snap "$snap" --arg lav "$lav" '
+      {
+        ok: true,
+        availability: (if $lav == "ok" then "ok" else "unknown" end),
+        org: $org,
+        limits: (
+          if $lav != "ok" then []
+          else
+            [ $snap.limits[]? | (.max - .remaining) as $used | {
+                name: .name,
+                used: $used,
+                max: .max,
+                pct: (if .max > 0 then (($used*100)/.max)|floor else 0 end)
+              } ]
+          end
+        ),
+        error: (if $lav == "ok" then null else {code:"limits_unavailable", message:"limits API missed — not 0%"} end)
+      }'
+    return 0
+  fi
   printf '%s%s%s  %s\n\n' "$BOLD" "$(org_name "$snap")" "$RESET" "${DIM}limit utilization${RESET}"
   # All limits, sorted by pct used desc; headline names first is nice but keep it simple/complete.
   jq -r '
@@ -457,10 +527,42 @@ cmd_limits() {
 cmd_flows() {
   have_sf || die "sf CLI not found."
   set_oflag
-  local res
-  res="$(sf_json data query "${OFLAG[@]}" -q \
+  local res raw why
+  raw="$(sf_try data query "${OFLAG[@]}" -q \
     "SELECT Id, InterviewLabel, InterviewStatus, CurrentElement, PauseLabel, CreatedDate FROM FlowInterview WHERE InterviewStatus IN ('Error','Paused') ORDER BY CreatedDate DESC LIMIT 25")" \
-    || { echo "${DIM}No queryable Flow interviews (note: hard faults roll back and may not persist — see paused + Setup Audit Trail).${RESET}"; return 0; }
+    || {
+      why="$(classify_sf_error "$raw")"
+      if [[ "${WANT_JSON:-0}" -eq 1 ]]; then
+        local snap; snap="$(load_snapshot 2>/dev/null)" || snap=""
+        jq -n --argjson org "$(org_json_blob "$snap")" --arg c "$why" \
+          '{ok:false,availability:"unknown",org:$org,interviews:[],note:"best-effort — hard faults may not persist",error:{code:$c,message:("FlowInterview query failed: "+$c)}}'
+        return 0
+      fi
+      echo "${DIM}No queryable Flow interviews (note: hard faults roll back and may not persist — see paused + Setup Audit Trail).${RESET}"
+      return 0
+    }
+  res="$(jq -c '.result' <<<"$raw")"
+  if [[ "${WANT_JSON:-0}" -eq 1 ]]; then
+    local snap; snap="$(load_snapshot 2>/dev/null)" || snap=""
+    jq -n --argjson org "$(org_json_blob "$snap")" --argjson res "$res" '
+      {
+        ok: true,
+        availability: "ok",
+        org: $org,
+        interviews: [
+          ($res.records // [])[]? | {
+            id: .Id,
+            status: .InterviewStatus,
+            label: .InterviewLabel,
+            element: (.CurrentElement // .PauseLabel),
+            createdDate: .CreatedDate
+          }
+        ],
+        note: "best-effort — hard faults may not persist",
+        error: null
+      }'
+    return 0
+  fi
   local n; n="$(jq -r '.records | length' <<<"$res")"
   if [[ "$n" == "0" ]]; then
     printf '%s No errored or paused Flow interviews right now.%s\n' "$GREEN" "$RESET"
@@ -517,7 +619,35 @@ cmd_context() {
     *)       env="UNKNOWN" ;;
   esac
 
-  # Markdown incident bundle — paste straight into Claude / Cursor.
+  if [[ "${WANT_JSON:-0}" -eq 1 ]]; then
+    local md
+    md="$(_cmd_context_markdown "$snap" "$env" "$flows" "$changes" "$logs")"
+    jq -n --argjson org "$(org_json_blob "$snap")" --arg env "$env" \
+      --argjson snap "$snap" --argjson flows "$flows" --argjson changes "$changes" \
+      --argjson logs "$logs" --arg md "$md" \
+      '{
+         ok: true,
+         availability: "ok",
+         sandboxState: $org.sandboxState,
+         org: $org,
+         env: $env,
+         limits: $snap.limits,
+         limitsAvailability: ($snap.limitsAvailability // "ok"),
+         flowFaults: ($flows.records // []),
+         changes: ($changes.records // []),
+         apexLogs: ($logs.records // []),
+         markdown: $md,
+         error: null
+       }' | redact_secrets_json
+    return 0
+  fi
+
+  _cmd_context_markdown "$snap" "$env" "$flows" "$changes" "$logs"
+}
+
+_cmd_context_markdown() {
+  # Relies on caller having snap, env, flows, changes, logs in scope via args.
+  local snap="$1" env="$2" flows="$3" changes="$4" logs="$5"
   cat <<EOF
 # Salesforce org context pack
 _Generated by bluechip $BLUECHIP_VERSION · read-only · $(date -u +%Y-%m-%dT%H:%M:%SZ)_
@@ -569,9 +699,13 @@ _This pack is display-only — it is not write authority. Agents must not deploy
 EOF
 }
 
-# Hygiene probe lives in a sibling include so install.sh's symlink still resolves.
+# Sibling includes so install.sh's symlink still resolves.
 # shellcheck source=bluechip-hygiene.inc
 source "$(dirname "$_bluechip_self")/bluechip-hygiene.inc"
+# shellcheck source=bluechip-named-creds.inc
+source "$(dirname "$_bluechip_self")/bluechip-named-creds.inc"
+# shellcheck source=bluechip-trace.inc
+source "$(dirname "$_bluechip_self")/bluechip-trace.inc"
 
 
 
@@ -662,10 +796,46 @@ notify() { # <level> <msg>
   fi
 }
 
+cmd_mcp_config() {
+  local root server
+  root="$(cd "$(dirname "$_bluechip_self")/.." && pwd)"
+  server="$root/mcp/server.py"
+  cat <<EOF
+{
+  "mcpServers": {
+    "bluechip": {
+      "command": "python3",
+      "args": ["$server"],
+      "env": {
+        "BLUECHIP_BIN": "$root/bin/bluechip"
+      }
+    }
+  }
+}
+EOF
+}
+
+cmd_wave2_stub() {
+  local name="$1"
+  cat <<EOF
+bluechip: '$name' is not in Wave 1.
+
+See docs/SHIP-BACKLOG.md — Wave 2 / later:
+  fls         FLS / perm-set matrix for integration users
+  offenders   Limit offenders (Event Log / Flex when available)
+  types       Apex-defined type explorer (coming)
+  clipboard   clipboard → context hotkey
+
+TraceFlag create is CLI-only (bluechip trace start). MCP stays display-only.
+EOF
+  return 2
+}
+
 cmd_help() {
   cat <<EOF
 ${BOLD}bluechip${RESET} — Salesforce admin cockpit for Omarchy  ${DIM}v$BLUECHIP_VERSION${RESET}
-Experimental side branch — ${BOLD}main remains parked${RESET}. Read-only. Rides your existing ${BOLD}sf${RESET} login.
+Active build tip on ${BOLD}bluechip-v1${RESET} (Harris 2026-09-15). ${BOLD}main${RESET} may still hold parked vision.
+Rides your existing ${BOLD}sf${RESET} login — no Connected App required for Wave 1.
 
 ${BOLD}COMMANDS${RESET}
   ${CYAN}doctor${RESET}          Shareable org-vitals card ("fastfetch for your org")
@@ -675,17 +845,26 @@ ${BOLD}COMMANDS${RESET}
   ${CYAN}flows${RESET}           Errored / paused Flow interviews
   ${CYAN}changes${RESET}         Recent Setup Audit Trail entries
   ${CYAN}context${RESET}         Paste-ready incident bundle for an AI agent
+  ${CYAN}named-creds${RESET}     Named / External Credential inspector (never prints secrets)
+  ${CYAN}trace${RESET}           start | status | stop — confirm-gated TraceFlag (CLI only)
+  ${CYAN}logs${RESET}            Recent ApexLog [--follow] [--body] (neutralized, size-capped)
   ${CYAN}orgs${RESET}            List sf-authed orgs (★ = pinned)
   ${CYAN}pin${RESET} <alias|->    Pin an org for bluechip (- clears; uses sf default)
   ${CYAN}watch${RESET} [secs]     Notify on amber→red limits / new flow faults (mako)
   ${CYAN}refresh${RESET}         Force-refresh the cached snapshot
+  ${CYAN}mcp-config${RESET}      Print Cursor/Claude MCP stdio snippet
   ${CYAN}version${RESET} | ${CYAN}help${RESET}
+
+${BOLD}WAVE 2 (not shipped)${RESET}  ${DIM}fls · offenders · types · clipboard — see docs/SHIP-BACKLOG.md${RESET}
 
 ${BOLD}OPTIONS${RESET}
   -o, --org <alias>   Target this org for one command
   --refresh           Ignore cache and re-query Salesforce
+  --json              Machine-readable JSON (supported commands)
+  --yes               Sandbox-only write confirm (banned on prod / unknown)
   --no-color          Plain output
 
+${DIM}MCP is display-only. TraceFlag start/stop require a human confirm in the CLI.${RESET}
 ${DIM}Unofficial · works with Salesforce® · not affiliated with Salesforce, Inc.${RESET}
 EOF
 }
@@ -704,7 +883,12 @@ case "$CMD" in
   flows)     cmd_flows "$@" ;;
   changes)   cmd_changes "$@" ;;
   context)   cmd_context "$@" ;;
+  named-creds|named-credentials|nc) cmd_named_creds "$@" ;;
+  trace)     cmd_trace "$@" ;;
+  logs)      cmd_logs "$@" ;;
   watch)     cmd_watch "$@" ;;
+  mcp-config|mcp) cmd_mcp_config "$@" ;;
+  fls|offenders|types|clipboard) cmd_wave2_stub "$CMD" ;;
   refresh)   FORCE_REFRESH=1; load_snapshot >/dev/null && echo "Snapshot refreshed." ;;
   version|-v|--version) echo "bluechip $BLUECHIP_VERSION" ;;
   help|-h|--help|"") cmd_help ;;

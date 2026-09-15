@@ -69,4 +69,5 @@ if command -v sf >/dev/null 2>&1 && sf org display >/dev/null 2>&1; then
 else
   say "  ${dim}Next:${rst}  sf org login web   &&   ${bold}bluechip doctor${rst}"
 fi
-say "${grn}${bold}Done.${rst} bluechip is read-only and uses your own sf login."
+say "${grn}${bold}Done.${rst} Reads use your own sf login. TraceFlag start/stop are confirm-gated."
+say "  ${dim}MCP (display-only):${rst}  ${bold}bluechip mcp-config${rst}"

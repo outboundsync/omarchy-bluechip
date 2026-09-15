@@ -528,7 +528,7 @@ _hygiene_dim_txt() {
 
 cmd_hygiene() {
   local want_json=0
-  [[ "${1:-}" == "--json" ]] && want_json=1
+  [[ "${1:-}" == "--json" || "${WANT_JSON:-0}" -eq 1 ]] && want_json=1
 
   if ! have_sf; then
     local err
