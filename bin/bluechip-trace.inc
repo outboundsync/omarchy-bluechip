@@ -48,7 +48,7 @@ compute_trace_status() {
   have_sf || { _trace_error sf_missing "sf CLI not found"; return 1; }
   set_oflag
   local snap orgblob raw
-  snap="$(load_snapshot 2>/dev/null)" || snap=""
+  take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
   orgblob="$(org_json_blob "$snap")"
 
   raw="$(_trace_query_flags)" || {
@@ -114,7 +114,7 @@ cmd_trace_status() {
     return $?
   fi
   local snap state env
-  snap="$(load_snapshot 2>/dev/null)" || snap=""
+  take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
   case "$(sandbox_state "${snap:-"{}"}")" in
     sandbox) env="SANDBOX" ;;
     prod) env="PROD" ;;
@@ -166,7 +166,8 @@ cmd_trace_start() {
 
   have_sf || { [[ $want_json -eq 1 ]] && _trace_error sf_missing "sf CLI not found"; die "sf CLI not found."; }
   set_oflag
-  local snap; snap="$(load_snapshot)" || die "could not read org."
+  local snap; take_snapshot || die "could not read org."
+  snap="$SNAPSHOT_BLOB"
   local state oid alias
   state="$(sandbox_state "$snap")"
   oid="$(org_id "$snap")"
@@ -243,7 +244,8 @@ cmd_trace_stop() {
   [[ "${WANT_JSON:-0}" -eq 1 ]] && want_json=1
   have_sf || die "sf CLI not found."
   set_oflag
-  local snap; snap="$(load_snapshot)" || die "could not read org."
+  local snap; take_snapshot || die "could not read org."
+  snap="$SNAPSHOT_BLOB"
   local state oid alias
   state="$(sandbox_state "$snap")"
   oid="$(org_id "$snap")"
@@ -344,7 +346,7 @@ compute_logs() {
   have_sf || { probe_error_json sf_missing "sf CLI not found"; return 1; }
   set_oflag
   local snap orgblob raw
-  snap="$(load_snapshot 2>/dev/null)" || snap=""
+  take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
   orgblob="$(org_json_blob "$snap")"
 
   raw="$(sf_try data query "${OFLAG[@]}" -q \
@@ -419,7 +421,7 @@ cmd_logs() {
   fi
 
   local snap env
-  snap="$(load_snapshot 2>/dev/null)" || snap=""
+  take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
   case "$(sandbox_state "${snap:-"{}"}")" in
     sandbox) env="SANDBOX" ;;
     prod) env="PROD" ;;
@@ -458,7 +460,7 @@ cmd_logs_follow() {
   have_sf || die "sf CLI not found."
   set_oflag
   local seen="{}" snap env
-  snap="$(load_snapshot 2>/dev/null)" || snap=""
+  take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
   case "$(sandbox_state "${snap:-"{}"}")" in
     sandbox) env="SANDBOX" ;;
     prod) env="PROD" ;;

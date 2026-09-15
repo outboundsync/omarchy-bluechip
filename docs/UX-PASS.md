@@ -145,19 +145,38 @@ is for tests and one-shot probes.
 
 `bluechip scratchpad` / `bin/bluechip-scratchpad`: Hyprland **special workspace**
 summon. Spawn-if-missing a terminal running `bluechip logs --follow` (or `--sf`
-for an `sf`+`jq` shell). `--boundary` prints the two commands for Worker + org
-debug (`bluechip logs --follow` beside `wrangler tail`) — chip stays ambient.
-No QML. Bind is documented, not installed.
+for an `sf`+`jq` shell). No QML. Bind is documented, not installed.
 
 ```
 bind = SUPER SHIFT, B, exec, bluechip-scratchpad
 ```
 
+### Boundary desk
+
+Chip stays ambient. Setup browser stays the human canvas. `scratchpad --boundary`
+prints `bluechip logs --follow` beside `wrangler tail` (wrangler does not need
+to be installed) plus a small idempotent `hyprctl` recipe for a special
+workspace with those two terminals.
+
+`--print-bind` and `--dry-run` work without Hyprland (CI). `--apply` dispatches
+only when `hyprctl` is on PATH.
+
+```
+bluechip scratchpad --boundary --dry-run
+bind = SUPER SHIFT, N, exec, bluechip-scratchpad --boundary --apply
+```
+
+Not virt-manager, not libvirt, not a QML panel.
+
 ## Clipboard
 
 - `notify-send` **only on success** (`bluechip-clipboard`). Unrecognized
   selection stays quiet.
-- Neutralize remote strings on ingest.
+- Neutralize remote strings on ingest. Refuse `://`, leading `-`, CR/LF.
+- Recognize Flow API names (`flow:` / `*_`), interview Ids, Named Cred
+  developer names (`nc:` / `*_NC`), 15/18-char org (`00D`) and user (`005`) Ids.
+- `--pack-callout` best-effort includes `callout-pack` when the token is a Flow
+  ApiName (unknown → quiet). Pack file is org-scoped; toast only after success.
 - Copy pack: `bluechip incident | wl-copy` or `bluechip clipboard --copy`.
 
 Optional bind:
@@ -201,6 +220,6 @@ Never a silent blank where a probe ran. Use **`unknown (reason)`** vs **`none`**
 | `bluechip incident [--json]` | One incident object |
 | `bluechip doctor --json` | Same builder as incident |
 | `bluechip watch [--jsonl] [--once]` | Deltas + optional JSONL |
-| `bluechip scratchpad` | Special-workspace helper; `--boundary` prints `logs --follow` + `wrangler tail` |
+| `bluechip scratchpad` | Special-workspace helper; `--boundary --dry-run` prints logs + `wrangler tail` + hyprctl recipe |
 | `bluechip changes [--json]` | Honest none / unknown |
 | `bluechip-clipboard` | Toast on success only |

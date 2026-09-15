@@ -33,7 +33,7 @@ Prefer MCP when wired. Otherwise the matching CLI `--json` verb.
 | `get_fls` | `bluechip fls --json --user … --fields …` | Read vs Edit gaps |
 | `get_desk` | `bluechip desk --json` | Per-org `sandboxState` |
 
-**CLI-only (not MCP):** `bluechip pin <alias>` · `trace start\|stop` · `fls-propose` · `logs --follow` · `watch` · `clipboard` · `scratchpad` (`--boundary` prints the Worker + org tail pair).
+**CLI-only (not MCP):** `bluechip pin <alias>` · `trace start\|stop` · `fls-propose` · `logs --follow` · `watch` · `clipboard` (`--pack-callout`) · `scratchpad` (`--boundary --dry-run` prints the Worker + org tail pair and a hyprctl recipe; no Hyprland required).
 
 Pipes: `bluechip incident \| wl-copy` · `bluechip incident --json \| jq .signal`.
 
@@ -57,7 +57,7 @@ Fixture-shaped samples (no live org, no secrets): [examples/incident.sample.json
 1. `list_orgs` / `get_pin` — which alias is hot, what `sandboxState` is on the pin.
 2. **Do not pin via MCP.** There is no pin-write tool.
 3. Human pins: `bluechip pin <alias>` (or Waybar left-click / `bluechip-switch`). Crossing prod↔sandbox is typed confirm; unknown requires the 18-char org Id.
-4. After pin, re-run `get_incident`. Chrome must match the org you intend (`PROD` quiet, `SBX` loud, `?` muted).
+4. After pin, re-run `get_incident`. Chrome must match the org you intend (`PROD` quiet, `SBX` loud, `?` muted). Snapshot / hygiene last-good / clipboard packs are per org Id — a pin switch must not replay the previous org’s cache.
 
 ## Limit bleeding?
 
@@ -91,7 +91,7 @@ Fixture-shaped samples (no live org, no secrets): [examples/incident.sample.json
    Report FLS missing Read vs missing Edit separately, plus NC principal / 401-class diagnoses.
 2. `get_apex_types` / `bluechip types [IN_… OUT_2XX …]` for Flow Assignment property paths. Do not invent fields.
 3. `get_callout_pack` / `bluechip callout-pack <FlowApiName>` — one hand-off (Flow identity + auth slice + types + ApexLog ids). Unknown slices keep a reason.
-4. **Do not Activate.** Boundary debug: tell the human `bluechip scratchpad --boundary` (prints `bluechip logs --follow` beside `wrangler tail`) and `bluechip trace start` (confirm-gated CLI). Chip stays ambient.
+4. **Do not Activate.** Boundary desk: tell the human `bluechip scratchpad --boundary --dry-run` (prints `bluechip logs --follow` beside `wrangler tail` plus a hyprctl recipe) and `bluechip trace start` (confirm-gated CLI). Chip stays ambient; Setup browser stays the canvas. `--apply` is host-side only when Hyprland is present.
 
 ## FLS for an integration user?
 

@@ -105,6 +105,7 @@ assert_json "$CLIPF" '.ok' "true" "flow api clipboard ok"
 assert_json "$CLIPF" '.kind' "flow_api" "kind flow_api"
 assert_json "$CLIPF" '.org.sandboxState' "sandbox" "clipboard sandboxState"
 [[ "$(jq -r '.packPath' <<<"$CLIPF")" == *clipboard-pack.md ]] && ok "pack path written" || bad "pack path missing"
+echo "$(jq -r '.packPath' <<<"$CLIPF")" | grep -q "/orgs/00D000000000002AAA/" && ok "pack path is org-scoped" || bad "pack path not org-scoped: $(jq -r '.packPath' <<<"$CLIPF")"
 jq -r '.markdown' <<<"$CLIPF" | grep -q 'SavvyCal_Webhook' && ok "pack mentions flow" || bad "pack missing flow name"
 jq -r '.markdown' <<<"$CLIPF" | grep -q 'SHOULD_NEVER_LEAK' && bad "clipboard pack leaked token" || ok "clipboard pack has no access token"
 
@@ -113,6 +114,23 @@ assert_json "$CLIPI" '.kind' "interview" "kind interview"
 
 CLIPO="$(run ok "$BLUECHIP" --no-color --refresh --json clipboard --text 00D000000000002AAA 2>/dev/null)"
 assert_json "$CLIPO" '.kind' "org" "kind org"
+
+CLIP15="$(run ok "$BLUECHIP" --no-color --refresh --json clipboard --text 00D000000000002 2>/dev/null)"
+assert_json "$CLIP15" '.kind' "org" "kind org 15-char"
+
+CLIPU="$(run ok "$BLUECHIP" --no-color --refresh --json clipboard --text 005000000000001AAA 2>/dev/null)"
+assert_json "$CLIPU" '.kind' "user" "kind user"
+
+CLIPNC="$(run ok "$BLUECHIP" --no-color --refresh --json clipboard --text ZoomInfo_NC 2>/dev/null)"
+assert_json "$CLIPNC" '.ok' "true" "named cred clipboard ok"
+assert_json "$CLIPNC" '.kind' "named_cred" "kind named_cred"
+
+CLIPNCP="$(run ok "$BLUECHIP" --no-color --refresh --json clipboard --text nc:ZoomInfo_NC 2>/dev/null)"
+assert_json "$CLIPNCP" '.kind' "named_cred" "kind named_cred via nc: prefix"
+
+CLIPPC="$(run ok "$BLUECHIP" --no-color --refresh --json clipboard --pack-callout --text SavvyCal_Webhook 2>/dev/null)"
+assert_json "$CLIPPC" '.ok' "true" "pack-callout still ok"
+echo "$(jq -r '.markdown' <<<"$CLIPPC")" | grep -q 'Callout pack' && ok "pack-callout embeds callout markdown" || ok "pack-callout quiet when types/auth unknown"
 
 if run ok "$BLUECHIP" --no-color --refresh --json clipboard --text "random junk from a webpage" >/dev/null 2>&1; then
   bad "unrecognized clipboard should fail"

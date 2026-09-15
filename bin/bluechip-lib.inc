@@ -223,6 +223,7 @@ pin_current_identity() {
   PIN_CUR_ID=""
   PIN_CUR_STATE="unknown"
   snap="$(load_snapshot 2>/dev/null)" || return 1
+  follow_org_cache "$snap"
   PIN_CUR_ID="$(org_id_raw "$snap")"
   PIN_CUR_STATE="$(sandbox_state "$snap")"
   return 0

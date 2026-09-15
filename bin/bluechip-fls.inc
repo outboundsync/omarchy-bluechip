@@ -15,7 +15,7 @@ fls_field_ref_ok() {
 _fls_error() {
   local code="$1" message="$2"
   local snap orgblob
-  snap="$(load_snapshot 2>/dev/null)" || snap=""
+  take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
   orgblob="$(org_json_blob "$snap")"
   jq -n --argjson org "$orgblob" --arg c "$code" --arg m "$message" \
     '{ok:false,availability:"unknown",org:$org,user:null,assignments:[],fields:[],summary:{ok:0,missing_read:0,missing_edit:0,unknown:0},proposal:null,error:{code:$c,message:$m}}'
@@ -106,7 +106,7 @@ compute_fls() {
   have_sf || { _fls_error sf_missing "sf CLI not found"; return 1; }
   set_oflag
   local snap orgblob
-  snap="$(load_snapshot 2>/dev/null)" || snap=""
+  take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
   orgblob="$(org_json_blob "$snap")"
 
   local uraw
@@ -407,7 +407,7 @@ _fls_mark() {
 _cmd_fls_print() {
   local h="$1" propose="${2:-0}"
   local snap env envcolor
-  snap="$(load_snapshot 2>/dev/null)" || snap=""
+  take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
   case "$(sandbox_state "${snap:-"{}"}")" in
     sandbox) env="SANDBOX"; envcolor="$YELLOW" ;;
     prod) env="PROD"; envcolor="$RED" ;;
@@ -483,6 +483,7 @@ cmd_fls() {
   fi
   _fls_parse_fields "$FLS_FIELDS_RAW" || die "invalid --fields (need Object.Field API names, max $FLS_MAX_FIELDS)"
   local h
+  take_snapshot || true
   h="$(compute_fls "$FLS_USER" "${FLS_FIELDS[@]}")" || h="$(_fls_error transient "FLS probe failed")"
   if _fls_persist "$h"; then
     printf '%s\n' "$h" | write_secure "$FLS_CACHE"

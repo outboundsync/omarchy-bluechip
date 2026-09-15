@@ -26,7 +26,9 @@ I/O actually called: [VISION.md](../VISION.md#api-honesty).
 | Apex-defined type explorer | `bluechip types` — IN_/OUT_/2XX / ExternalService via Tooling. Property paths for Flow Assignment. |
 | Flow callout pack | `bluechip callout-pack` / `incident --callout`. Hand-off, not write authority. |
 | DWU / integration preflight | `bluechip preflight --user` (+ optional `--fields`). FLS + NC principal. Does not Activate. |
-| Boundary desk | `bluechip scratchpad --boundary` prints `logs --follow` + `wrangler tail`. No QML. |
+| Boundary desk | `bluechip scratchpad --boundary` prints `logs --follow` + `wrangler tail` plus an idempotent hyprctl recipe (`--dry-run` / `--print-bind` without Hyprland; `--apply` when present). No QML. |
+| Org-scoped state | Snapshot, hygiene last-good, NC/FLS caches, clipboard pack, watch under `~/.config/bluechip/orgs/<orgId>/`. Pin map + hygiene config stay global. Pin switch cannot serve org A as org B. |
+| Clipboard patterns | Flow / interview / Named Cred (`nc:` / `*_NC`) / 15–18 char org+user Ids. `--pack-callout` best-effort. Toast only after success. |
 
 **MCP tools (display-only):** `get_context`, `get_incident`, `get_limits`,
 `list_flow_faults`, `get_hygiene`, `list_orgs` / `get_pin`, `get_named_creds`,
@@ -50,6 +52,10 @@ Work that is **not** on the tip.
 | QML / marketplace listing | CLI + Waybar + MCP is enough to operate on Omarchy. Quattro panel = Fabius. |
 | Paid OutboundSync attach API | Out of scope for this MIT repo. Optional deep-link only. |
 | FLS apply / Flow activate | Confirm matrix is documented. TraceFlag is the write that exists. |
+| `BLUECHIP_BWRAP=1` around `sf` | Optional bubblewrap (read-only except state dir) is a future. Off by default on purpose: node-based `sf` / nvm resolution is easy to half-break. Do not ship a production path that needs it. |
+| Firejail browser profiles | Mention only. Not a ship requirement for the host desk. |
+| libvirt / disposable Omarchy VMs / Orca | Host-desk Linux only. Virt recipes stay out of this product. |
+| netns / IP allowlist hacks | Out of scope. |
 
 ---
 

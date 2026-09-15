@@ -372,7 +372,7 @@ cmd_callout_auth() {
 cmd_named_creds_print() {
   local h="$1"
   local snap state env envcolor
-  snap="$(load_snapshot 2>/dev/null)" || snap=""
+  take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
   state="$(sandbox_state "${snap:-"{}"}")"
   case "$state" in
     sandbox) env="SANDBOX"; envcolor="$YELLOW" ;;
@@ -464,7 +464,7 @@ compute_types() {
   have_sf || { probe_error_json sf_missing "sf CLI not found"; return 1; }
   set_oflag
   local snap orgblob
-  snap="$(load_snapshot 2>/dev/null)" || snap=""
+  take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
   orgblob="$(org_json_blob "$snap")"
 
   local mode="discover" list_raw="" why="" avail="unknown"
@@ -562,7 +562,7 @@ cmd_types() {
   fi
 
   local snap env envcolor
-  snap="$(load_snapshot 2>/dev/null)" || snap=""
+  take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
   case "$(sandbox_state "${snap:-"{}"}")" in
     sandbox) env="SANDBOX"; envcolor="$YELLOW" ;;
     prod) env="PROD"; envcolor="$RED" ;;
@@ -624,7 +624,7 @@ compute_callout_pack() {
   have_sf || { probe_error_json sf_missing "sf CLI not found"; return 1; }
   set_oflag
   local snap orgblob
-  snap="$(load_snapshot 2>/dev/null)" || snap=""
+  take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
   orgblob="$(org_json_blob "$snap")"
 
   if ! soql_api_name_ok "$flow"; then
@@ -839,7 +839,7 @@ compute_preflight() {
   have_sf || { probe_error_json sf_missing "sf CLI not found"; return 1; }
   set_oflag
   local snap orgblob
-  snap="$(load_snapshot 2>/dev/null)" || snap=""
+  take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
   orgblob="$(org_json_blob "$snap")"
 
   if [[ -z "$who" ]]; then
@@ -953,7 +953,7 @@ cmd_preflight() {
   fi
 
   local snap env envcolor
-  snap="$(load_snapshot 2>/dev/null)" || snap=""
+  take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
   case "$(sandbox_state "${snap:-"{}"}")" in
     sandbox) env="SANDBOX"; envcolor="$YELLOW" ;;
     prod) env="PROD"; envcolor="$RED" ;;

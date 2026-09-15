@@ -49,7 +49,10 @@ fi
 printf '%s\n' "snapshot cache never stores accessToken"
 HOME1="$WORKDIR/snap-home"
 SNAP_OUT="$(HOME_OVERRIDE="$HOME1" run "$FIX/ok" "$BLUECHIP" --no-color --refresh --json pin 2>/dev/null)" || true
-CACHE="$HOME1/.config/bluechip/cache/snapshot.json"
+CACHE="$HOME1/.config/bluechip/orgs/00D000000000002AAA/snapshot.json"
+if [[ ! -f "$CACHE" ]]; then
+  CACHE="$HOME1/.config/bluechip/cache/snapshot.json"
+fi
 if [[ -f "$CACHE" ]]; then
   if grep -q accessToken "$CACHE" || grep -q SHOULD_NEVER_LEAK "$CACHE"; then
     bad "snapshot cache leaked accessToken"
@@ -66,10 +69,11 @@ fi
 
 printf '%s\n' "write_secure refuses symlink dest"
 HOME2="$WORKDIR/sym-home"
-mkdir -p "$HOME2/.config/bluechip/cache" "$WORKDIR/evil"
-chmod 700 "$HOME2/.config/bluechip"
+OID="00D000000000002AAA"
+mkdir -p "$HOME2/.config/bluechip/cache" "$HOME2/.config/bluechip/orgs/$OID" "$WORKDIR/evil"
+chmod 700 "$HOME2/.config/bluechip" "$HOME2/.config/bluechip/orgs/$OID"
 printf 'TARGET\n' > "$WORKDIR/evil/target"
-ln -s "$WORKDIR/evil/target" "$HOME2/.config/bluechip/cache/snapshot.json"
+ln -s "$WORKDIR/evil/target" "$HOME2/.config/bluechip/orgs/$OID/snapshot.json"
 HOME="$HOME2" XDG_CONFIG_HOME="$HOME2/.config" \
   BLUECHIP_SF="$STUB" BLUECHIP_FIXTURE="$FIX/ok" \
   "$BLUECHIP" --no-color --refresh doctor >/dev/null 2>"$WORKDIR/sym.err" || true
@@ -99,7 +103,8 @@ HUGE_ERR="$WORKDIR/huge.err"
 HOME="$HOME_H" XDG_CONFIG_HOME="$HOME_H/.config" \
   BLUECHIP_SF="$STUB" BLUECHIP_FIXTURE="$HUGE" BLUECHIP_SF_MAX_BYTES=65536 \
   "$BLUECHIP" --no-color --refresh bar >/dev/null 2>"$HUGE_ERR" || true
-if grep -q 'AAAAAAAA' "$HOME_H/.config/bluechip/cache/snapshot.json" 2>/dev/null; then
+if grep -q 'AAAAAAAA' "$HOME_H/.config/bluechip/orgs/00D000000000001AAA/snapshot.json" 2>/dev/null \
+   || grep -q 'AAAAAAAA' "$HOME_H/.config/bluechip/cache/snapshot.json" 2>/dev/null; then
   bad "oversize sf output was cached"
 else
   ok "oversize sf output not cached"
@@ -110,6 +115,8 @@ CLIP_URL="$(run "$FIX/ok" "$BLUECHIP" --no-color --refresh --json clipboard --te
 echo "$CLIP_URL" | jq -e '.ok == false' >/dev/null && ok "clipboard url refused" || bad "clipboard url: $CLIP_URL"
 CLIP_FLAG="$(run "$FIX/ok" "$BLUECHIP" --no-color --refresh --json clipboard --text '-o prod' 2>/dev/null)" || true
 echo "$CLIP_FLAG" | jq -e '.ok == false' >/dev/null && ok "clipboard flag-shaped refused" || bad "clipboard flag: $CLIP_FLAG"
+CLIP_NL="$(run "$FIX/ok" "$BLUECHIP" --no-color --refresh --json clipboard --text $'SavvyCal\nWebhook' 2>/dev/null)" || true
+echo "$CLIP_NL" | jq -e '.ok == false' >/dev/null && ok "clipboard newline refused" || bad "clipboard newline: $CLIP_NL"
 
 printf '%s\n' "bar uses cache TTL — no extra org display on second tick"
 HOME_B="$WORKDIR/bar-home"
@@ -142,7 +149,8 @@ chmod 700 "$HOME_C/.config/bluechip"
     BLUECHIP_SF="$STUB" BLUECHIP_FIXTURE="$FIX/ok" \
     "$BLUECHIP" --no-color --refresh --json pin >/dev/null 2>&1
 )
-if grep -q IMPOSTOR "$HOME_C/.config/bluechip/cache/snapshot.json" 2>/dev/null; then
+if grep -q IMPOSTOR "$HOME_C/.config/bluechip/orgs/00D000000000002AAA/snapshot.json" 2>/dev/null \
+   || grep -q IMPOSTOR "$HOME_C/.config/bluechip/cache/snapshot.json" 2>/dev/null; then
   bad "cwd sf impostor was used"
 else
   ok "absolute BLUECHIP_SF beat cwd impostor"

@@ -106,10 +106,11 @@ H5_EC=$?
 assert_eq "$H5_EC" "1" "H5 exit non-zero"
 assert_json "$H5" '.ok' "false" "H5 ok false"
 assert_json "$H5" '.error.code' "transient" "H5 structured transient"
-AFTER="$(cat "$H5_HOME/.config/bluechip/cache/hygiene.json")"
+H5_ORG="$H5_HOME/.config/bluechip/orgs/00D000000000001AAA"
+AFTER="$(cat "$H5_ORG/hygiene.json" 2>/dev/null || cat "$H5_HOME/.config/bluechip/cache/hygiene.json")"
 assert_json "$AFTER" '.overall.grade' "B" "H5 last-good grade kept"
 assert_json "$AFTER" '.measuredAt' "1000" "H5 last-good not overwritten"
-assert_eq "$(test -f "$H5_HOME/.config/bluechip/cache/hygiene.error.json" && echo yes || echo no)" "yes" "H5 doctor stale flag written"
+assert_eq "$(test -f "$H5_ORG/hygiene.error.json" && echo yes || echo no)" "yes" "H5 doctor stale flag written"
 DOC="$(HOME="$H5_HOME" XDG_CONFIG_HOME="$H5_HOME/.config" \
   BLUECHIP_SF="$STUB" BLUECHIP_FIXTURE="$CASES/h5" \
   "$BLUECHIP" --no-color doctor 2>/dev/null || true)"
@@ -214,9 +215,11 @@ HOME="$MODE_HOME" XDG_CONFIG_HOME="$MODE_HOME/.config" \
   BLUECHIP_SF="$STUB" BLUECHIP_FIXTURE="$CASES/h2" \
   "$BLUECHIP" --no-color --refresh hygiene --json >/dev/null 2>&1 || true
 STAT_DIR="$(stat -c '%a' "$MODE_HOME/.config/bluechip" 2>/dev/null || echo missing)"
-STAT_CACHE="$(stat -c '%a' "$MODE_HOME/.config/bluechip/cache/hygiene.json" 2>/dev/null || echo missing)"
-STAT_SNAP="$(stat -c '%a' "$MODE_HOME/.config/bluechip/cache/snapshot.json" 2>/dev/null || echo missing)"
+STAT_ORG="$(stat -c '%a' "$MODE_HOME/.config/bluechip/orgs/00D000000000001AAA" 2>/dev/null || echo missing)"
+STAT_CACHE="$(stat -c '%a' "$MODE_HOME/.config/bluechip/orgs/00D000000000001AAA/hygiene.json" 2>/dev/null || echo missing)"
+STAT_SNAP="$(stat -c '%a' "$MODE_HOME/.config/bluechip/orgs/00D000000000001AAA/snapshot.json" 2>/dev/null || echo missing)"
 assert_eq "$STAT_DIR" "700" "state dir 700"
+assert_eq "$STAT_ORG" "700" "org cache dir 700"
 assert_eq "$STAT_CACHE" "600" "hygiene.json 600"
 assert_eq "$STAT_SNAP" "600" "snapshot.json 600"
 

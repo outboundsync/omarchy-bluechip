@@ -223,7 +223,10 @@ See [docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md). Agent contract:
 
 ## Secrets / cache
 
-- State dir `~/.config/bluechip/` is `chmod 700` on first write; cache and credentials files are `0600`.
+- State dir `~/.config/bluechip/` is `chmod 700` on first write; org-bound
+  artifacts live under `orgs/<18charOrgId>/` (`0700`); cache and credentials
+  files are `0600`. Pin map / hygiene *config* stay global so a pin switch
+  cannot reuse another org’s snapshot or last-good.
 - Never store or display a Consumer Secret in a settings UI. This tip has no Connected App and strips `accessToken` / `clientSecret` / `clientId` from snapshots and the context pack.
 - Hygiene config is code: object/field API names must match describe or a strict regex before interpolation into SOQL.
 

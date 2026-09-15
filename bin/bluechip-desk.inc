@@ -4,7 +4,7 @@
 
 DESK_MAX="${BLUECHIP_DESK_MAX:-8}"
 CLIP_MAX="${BLUECHIP_CLIP_MAX:-4000}"
-CLIP_PACK="${CLIP_PACK:-$CACHE_DIR/clipboard-pack.md}"
+CLIP_PACK="${CLIP_PACK:-${CACHE_DIR:-}/clipboard-pack.md}"
 
 desk_safe_alias() {
   printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_'
@@ -60,7 +60,6 @@ pulse_one_alias() {
   local snap
   snap="$(
     ORG_OVERRIDE="$alias"
-    SNAPSHOT_FILE="$CACHE_DIR/pulse.$(desk_safe_alias "$alias").json"
     set_oflag
     load_snapshot 2>/dev/null
   )" || snap=""
@@ -296,17 +295,24 @@ clipboard_classify() {
   if [[ "$s" == flow:* ]]; then echo flow_api; return; fi
   if [[ "$s" == interview:* ]]; then echo interview; return; fi
   if [[ "$s" == org:* ]]; then echo org; return; fi
+  if [[ "$s" == nc:* || "$s" == named:* ]]; then echo named_cred; return; fi
+  if [[ "$s" == user:* ]]; then echo user; return; fi
   if sf_org_id_ok "$s" && [[ "${s:0:3}" == "00D" || "${s:0:3}" == "00d" ]]; then
     echo org; return
   fi
   if sf_record_id_ok "$s"; then
     case "${s:0:3}" in
       00D|00d) echo org ;;
+      005) echo user ;;
       4I9|3I9|4i9|3i9) echo interview ;;
       07L|07l) echo apexlog ;;
       300|301|3D0|3d0) echo flow_def ;;
       *) echo record ;;
     esac
+    return
+  fi
+  if soql_api_name_ok "$s" && [[ "$s" == *_NC ]]; then
+    echo named_cred
     return
   fi
   if soql_api_name_ok "$s" && [[ "$s" == *_* ]]; then
@@ -322,6 +328,9 @@ clipboard_token() {
   raw="${raw#flow:}"
   raw="${raw#interview:}"
   raw="${raw#org:}"
+  raw="${raw#named:}"
+  raw="${raw#nc:}"
+  raw="${raw#user:}"
   printf '%s' "$raw"
 }
 
@@ -339,12 +348,24 @@ _clipboard_interview() {
     "SELECT Id, InterviewLabel, InterviewStatus, CurrentElement, PauseLabel, CreatedDate FROM FlowInterview WHERE Id = '$(soql_escape_literal "$id")' LIMIT 1"
 }
 
+_clipboard_named_cred() {
+  local name="$1"
+  soql_api_name_ok "$name" || return 1
+  if declare -F _nc_tooling_try >/dev/null 2>&1; then
+    _nc_tooling_try \
+      "SELECT Id, DeveloperName, MasterLabel FROM NamedCredential WHERE DeveloperName = '$(soql_escape_literal "$name")' LIMIT 1"
+  else
+    sf_try data query --use-tooling-api "${OFLAG[@]}" -q \
+      "SELECT Id, DeveloperName, MasterLabel FROM NamedCredential WHERE DeveloperName = '$(soql_escape_literal "$name")' LIMIT 1"
+  fi
+}
+
 compute_clipboard() {
   local text="$1"
   have_sf || { probe_error_json sf_missing "sf CLI not found"; return 1; }
   set_oflag
   local snap orgblob
-  snap="$(load_snapshot 2>/dev/null)" || snap=""
+  take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
   orgblob="$(org_json_blob "$snap")"
 
   if ((${#text} > CLIP_MAX)); then
@@ -362,7 +383,7 @@ compute_clipboard() {
 
   if [[ "$kind" == "unrecognized" ]]; then
     jq -n --argjson org "$orgblob" --arg k "$kind" \
-      '{ok:false,availability:"unknown",org:$org,kind:$k,token:null,packPath:null,markdown:null,error:{code:"unrecognized",message:"clipboard is not a Flow API name, interview Id, or org Id"}}'
+      '{ok:false,availability:"unknown",org:$org,kind:$k,token:null,packPath:null,markdown:null,error:{code:"unrecognized",message:"clipboard is not a Flow API name, interview Id, Named Cred, org Id, or user Id"}}'
     return 0
   fi
 
@@ -375,6 +396,10 @@ compute_clipboard() {
     org)
       extra+=$'\n'"- **Org Id (from clipboard):** $(neutralize_plaintext "$token" 22)"
       extra+=$'\n'"- Pin is unchanged (crossing still needs confirm)."
+      ;;
+    user)
+      extra+=$'\n'"- **User Id (from clipboard):** $(neutralize_plaintext "$token" 22)"
+      extra+=$'\n'"- Pin is unchanged. Probe FLS with \`bluechip fls --user\` if this is an integration user."
       ;;
     interview|record)
       meta="$(_clipboard_interview "$token" 2>/dev/null)" || meta=""
@@ -389,6 +414,20 @@ compute_clipboard() {
         extra+=$'\n'"- Interview lookup: unknown (query miss) — not invented."
       fi
       ;;
+    named_cred)
+      meta="$(_clipboard_named_cred "$token" 2>/dev/null)" || meta=""
+      if [[ -n "$meta" ]] && jq -e '.status == 0 and (.result.records | length > 0)' <<<"$meta" >/dev/null 2>&1; then
+        extra+=$'\n'"$(jq -r --arg n "$token" '
+          (.result.records // []) | map(select(.DeveloperName == $n)) | .[0] as $r
+          | if $r == null then "- Named Credential: (no row)"
+            else "- **Named Credential:** \($r.DeveloperName) · \($r.MasterLabel // "") — secrets never printed"
+            end
+        ' <<<"$meta")"
+      else
+        extra+=$'\n'"- Named Credential: unknown or no row for $(neutralize_plaintext "$token" 80)"
+      fi
+      extra+=$'\n'"- Auth classes: \`bluechip callout-auth\` (never secrets)."
+      ;;
     flow_api|flow_def)
       local fname="$token"
       if [[ "$kind" == "flow_def" ]]; then fname="$token"; fi
@@ -401,9 +440,28 @@ compute_clipboard() {
             end
         ' <<<"$meta")"
       else
-        extra+=$'\n'"- FlowDefinition: unknown or no row for $(neutralize_plaintext "$fname" 80)"
+        # Best-effort: underscore API names may be a Named Cred, not a Flow.
+        local ncmeta=""
+        ncmeta="$(_clipboard_named_cred "$fname" 2>/dev/null)" || ncmeta=""
+        if [[ -n "$ncmeta" ]] && jq -e '.status == 0 and (.result.records | length > 0)' <<<"$ncmeta" >/dev/null 2>&1; then
+          kind="named_cred"
+          extra="$(printf '## Clipboard detection\n- **Kind:** %s\n- **Token:** %s\n' \
+            "$(neutralize_plaintext "$kind" 32)" \
+            "$(neutralize_plaintext "$token" 120)")"
+          extra+=$'\n'"$(jq -r --arg n "$fname" '
+            (.result.records // []) | map(select(.DeveloperName == $n)) | .[0] as $r
+            | if $r == null then "- Named Credential: (no row)"
+              else "- **Named Credential:** \($r.DeveloperName) · \($r.MasterLabel // "") — secrets never printed"
+              end
+          ' <<<"$ncmeta")"
+          extra+=$'\n'"- Auth classes: \`bluechip callout-auth\` (never secrets)."
+        else
+          extra+=$'\n'"- FlowDefinition: unknown or no row for $(neutralize_plaintext "$fname" 80)"
+        fi
       fi
-      extra+=$'\n'"- Matched paused/errored interviews are listed below when labels match."
+      if [[ "$kind" == "flow_api" || "$kind" == "flow_def" ]]; then
+        extra+=$'\n'"- Matched paused/errored interviews are listed below when labels match."
+      fi
       ;;
     apexlog)
       extra+=$'\n'"- **ApexLog id:** $(neutralize_plaintext "$token" 22) — pull with \`bluechip logs --body\`"
@@ -438,6 +496,17 @@ compute_clipboard() {
     [[ -n "$matched" ]] && extra+=$'\n'"$matched"$'\n'
   fi
 
+  # Opt-in: wire a recognized Flow ApiName into callout-pack. Unknown → quiet.
+  if [[ "${WANT_PACK_CALLOUT:-0}" == "1" && "$kind" == "flow_api" ]] \
+     && declare -F compute_callout_pack >/dev/null 2>&1; then
+    local cpack="" cmd=""
+    cpack="$(compute_callout_pack "$token" 2>/dev/null)" || cpack=""
+    if [[ -n "$cpack" ]] && jq -e '.ok == true and .flow.identity != null' <<<"$cpack" >/dev/null 2>&1; then
+      cmd="$(jq -r '.markdown // empty' <<<"$cpack")"
+      [[ -n "$cmd" ]] && extra+=$'\n'"$cmd"$'\n'
+    fi
+  fi
+
   local md
   md="$(_cmd_context_markdown "$snap" "$env" "$flows" "$changes" "$logs" "$extra")"
   ensure_state_dir
@@ -451,20 +520,24 @@ compute_clipboard() {
 
 cmd_clipboard() {
   local want_json=0 do_copy=0 text=""
+  WANT_PACK_CALLOUT="${WANT_PACK_CALLOUT:-0}"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --json) want_json=1; shift ;;
       --copy) do_copy=1; shift ;;
+      --pack-callout) WANT_PACK_CALLOUT=1; shift ;;
       --text) text="${2:-}"; shift 2 ;;
       --text=*) text="${1#*=}"; shift ;;
       help|-h|--help)
         cat <<EOF
 ${BOLD}bluechip clipboard${RESET} — clipboard → context pack
 
-  ${CYAN}clipboard${RESET} [--text <str>] [--copy] [--json]
-      If the clipboard looks like a Flow API name, Flow interview Id, or
-      org Id, enrich a context pack and print the path. --copy also writes
-      the pack back to the clipboard.
+  ${CYAN}clipboard${RESET} [--text <str>] [--copy] [--pack-callout] [--json]
+      If the clipboard looks like a Flow API name, Flow interview Id,
+      Named Cred developer name, org Id, or user Id, enrich a context
+      pack and print the path. --copy also writes the pack back to the
+      clipboard. --pack-callout best-effort includes \`callout-pack\`
+      when the token is a Flow ApiName (unknown → quiet).
 
 Hyprland bind example (optional — CLI works without a DE bind). Copy pack:
 
@@ -492,7 +565,7 @@ EOF
       printf '%s\n' "$h"
       return 1
     fi
-    printf 'bluechip: clipboard not a Flow API name, interview Id, or org Id.\n' >&2
+    printf 'bluechip: clipboard not a Flow API name, interview Id, Named Cred, org Id, or user Id.\n' >&2
     return 1
   fi
 

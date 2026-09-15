@@ -92,7 +92,7 @@ chmod 700 "$HOME_LG/.config/bluechip"
 HOME="$HOME_LG" XDG_CONFIG_HOME="$HOME_LG/.config" \
   BLUECHIP_SF="$STUB" BLUECHIP_FIXTURE="$FIX/ok" \
   "$BLUECHIP" --no-color --refresh --json named-creds >/dev/null
-[[ -f "$HOME_LG/.config/bluechip/cache/named-creds.json" ]] && ok "cache written" || bad "cache missing"
+[[ -f "$HOME_LG/.config/bluechip/orgs/00D000000000002AAA/named-creds.json" ]] && ok "cache written" || bad "cache missing"
 
 printf '\n%s\n' "$PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

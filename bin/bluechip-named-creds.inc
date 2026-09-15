@@ -201,7 +201,7 @@ compute_named_creds() {
   have_sf || { probe_error_json sf_missing "sf CLI not found"; return 1; }
   set_oflag
   local snap orgblob
-  snap="$(load_snapshot 2>/dev/null)" || snap=""
+  take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
   orgblob="$(org_json_blob "$snap")"
 
   local nc_raw ec_raw nc_avail="unknown" ec_avail="unknown" nc_reason="" ec_reason=""
@@ -382,6 +382,7 @@ cmd_named_creds() {
   fi
 
   local h
+  take_snapshot || true
   h="$(compute_named_creds)" || h="$(probe_error_json transient "named credential inspect failed")"
 
   if named_creds_should_persist "$h"; then
@@ -407,7 +408,7 @@ cmd_named_creds() {
   fi
 
   local snap state env envcolor
-  snap="$(load_snapshot 2>/dev/null)" || snap=""
+  take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
   state="$(sandbox_state "${snap:-"{}"}")"
   case "$state" in
     sandbox) env="SANDBOX"; envcolor="$YELLOW" ;;
