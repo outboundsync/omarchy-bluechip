@@ -21,5 +21,11 @@ Vision: [VISION.md](./VISION.md) · ranked backlog: [docs/SHIP-BACKLOG.md](./doc
 - **Connected App / External Client App** — not on `main`; Brutus owns org policy when needed.
 - **Promote-to-main** — Harris merges; do not treat `bluechip-v1` landing on `main` as automatic.
 
-The experimental read-only CLI + Waybar chip on `bluechip-v1` is build work, not a claim that
-QML or marketplace furniture shipped.
+Do not scaffold QML, Connected App, or marketplace listing until those surfaces unpark.
+Fabius = Omarchy shell craft when build starts. Brutus = org/Connected App policy if needed.
+Dante keeps the ship story until told otherwise.
+
+[`bluechip-v1`](https://github.com/outboundsync/omarchy-bluechip/tree/bluechip-v1) is the
+experimental build tip (Dreamforce-week CLI + Waybar chip). It is **not** the product of
+record on `main`. The read-only CLI there is build work, not a claim that QML or marketplace
+furniture shipped.

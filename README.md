@@ -10,7 +10,12 @@ Salesforce **admin cockpit** for Omarchy — org pulse, Flow faults, API limits,
 **License:** MIT  
 **Status:** Harris authorized ship **2026-09-15**. Active implementation on
 [`bluechip-v1`](https://github.com/outboundsync/omarchy-bluechip/tree/bluechip-v1).
-**`main` = vision + adversarial-review contracts** until Harris promotes a build tip.
+**`main` = vision + adversarial-review contracts** until Harris promotes a build tip. No CLI, no QML, no Connected App on `main`.
+
+## Adversarial review (2026-09-15)
+
+Janus review of the parked vision, `bluechip-v1` experiment, and hygiene-scoring gaps:
+**[docs/ADVERSARIAL-REVIEW-2026-09-15.md](./docs/ADVERSARIAL-REVIEW-2026-09-15.md)**. Contract fixes from that review land on `main`; implementation builds on `bluechip-v1` per Harris's 2026-09-15 ship authorization.
 
 ## Direction (locked)
 
@@ -30,6 +35,7 @@ Named **Bluechip** — bar chip, blue-chip orgs, a nod to Salesforce blue — wi
 ## Park / ship status
 
 See [PARKED.md](./PARKED.md). QML and marketplace listing remain parked. Harris merges promote.
+The `bluechip-v1` side branch is the active build tip — experimental CLI, not merged to `main`.
 
 ## License
 

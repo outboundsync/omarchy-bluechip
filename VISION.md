@@ -12,13 +12,51 @@ Omarchy’s early users skew technical, agent-native, allergic to browser tax. T
 
 Make Omarchy the **best place on earth to operate and troubleshoot a Salesforce org** — especially sandboxes, broken automations, and limit pressure — with agents as force multipliers and a human confirm gate on anything that writes.
 
+## First beachhead (when Harris unparks)
+
+Do not boil the ocean across all six pillars at once. Ship in this order:
+
+1. **Org pin + hard sandbox/prod chrome** — impossible to misread which org is active
+2. **API & limit pulse** — amber before red, aggregates only in the bar
+3. **Flow fault console** — failed interviews surfaced ambiently
+4. **Agent context pack** — org id, sandbox state, Flow interview, limits, recent changes — one paste for Cursor/Claude
+
+Hygiene scoring, paid attach, access forensics, and DX drift follow after the cockpit is real. Seller chip stays later.
+
+## Surfaces (do not conflate)
+
+Three distinct products share a desk but must not blur in copy, UX, or brand:
+
+| Surface | License / owner | Job | Grade / CTA rule |
+| --- | --- | --- | --- |
+| **Cockpit** | MIT Bluechip plugin | Pin, chrome, limits, Flow faults, changes, context pack | No letter grade; no “remediate at scale” CTA |
+| **Hygiene probe** | MIT Bluechip (read-only) | Per-object measured/unknown cards from describe-first SOQL | **No A–F** until the measured contract and acceptance tests H1–H10 pass ([review](./docs/ADVERSARIAL-REVIEW-2026-09-15.md)) |
+| **Paid attach** | OutboundSync SKU | Router/enrichment remediation at scale | Real attach API + finding schema; Bluechip may deep-link only |
+
+The MIT repo must not sell the wedge with a stub URL or a local heuristic grade. Context pack is display-only — not write authority.
+
+## Org identity: `sandboxState` (three-valued, everywhere)
+
+`sandboxState` is **`prod` | `sandbox` | `unknown`** — never a boolean, never default unknown to prod.
+
+Required on every surface that names the active org:
+
+- Status bar / Waybar chip
+- `doctor` (or equivalent health card)
+- **Agent context pack** (same helper as bar — no separate `is_sandbox // false` path)
+- Watch / background poll payloads
+- Hygiene attach hand-off
+
+When org metadata is unreadable, show **unknown** (amber), not silent PROD. Pin and switch across sandbox↔prod boundaries require confirm (see matrix below).
+
 ## Pillars
 
 ### 1. Org & sandbox awareness
 - Fast switch / pin: prod vs partial vs full sandboxes vs scratch (where DX applies)
-- Per-org pulse: which org am I “looking at” in the bar right now?
+- Per-org pulse: which org am I “looking at” in the bar right now? (`sandboxState` three-valued — see above)
 - Sandbox refresh age, status, who’s using which sandbox
-- Never confuse sandbox debug for prod (hard visual + confirm)
+- Never confuse sandbox debug for prod (hard visual + confirm when crossing sandbox↔prod)
+- Show 18-char org id in chrome; pin to prod requires explicit confirm
 
 ### 2. Flow troubleshooting (hero pain)
 - Failed / faulted Flow interviews surfaced ambiently
@@ -46,7 +84,8 @@ Make Omarchy the **best place on earth to operate and troubleshoot a Salesforce 
 - Salesforce API / Tooling / Metadata / (where available) MCP = muscle
 - Omarchy Agents / Cursor / Claude on the desk = brain
 - Bluechip = seat, pulse, context pack (“this org, this Flow interview, these limits”)
-- **Writes only after explicit confirm** (deploy, trace flag, perm change, user freeze)
+- **Writes only after explicit confirm** (deploy, trace flag, perm change, user freeze) — see confirm matrix
+- Context pack is **not** authorization: agents may write via other tools; Bluechip must not imply the pack blessed a deploy
 
 ## Bleeding-edge admin desktop (aspiration)
 
@@ -62,6 +101,66 @@ The admin at a sharp tech company opens Omarchy and sees: which org is hot, whic
 
 **Brand:** Bluechip remains the open Omarchy plugin name for now. Shipping furniture under an OutboundSync-facing label later is fine; do not confuse the MIT cockpit with the paid hygiene/router story.
 
+### Hygiene attach contract (stub — spec before any scoring UI)
+
+Paid attach is built as OutboundSync product, surfaced through this plugin. Before any hygiene UX or “remediate” CTA ships, lock:
+
+**Identity:** org id (18-char) + `sandboxState`; per-connection OutboundSync identity when applicable; which user/perm runs the audit (integration user FLS trap applies).
+
+**Finding schema (outline):**
+
+```json
+{
+  "findingId": "uuid",
+  "orgId": "00D…",
+  "sandboxState": "prod | sandbox | unknown",
+  "objectApi": "Lead",
+  "dimension": "completeness | freshness | ownership | dupes | overdue",
+  "availability": "ok | partial | unknown",
+  "reason": "object_forbidden | field_forbidden | invalid_field | transient | timeout",
+  "aggregate": { "total": 1200, "affected": 42, "fieldApi": "Email" },
+  "measuredAt": "ISO-8601"
+}
+```
+
+**Transport rules:**
+
+- Prefer **aggregates** (counts, field API names, dimension summaries) over record-Id dumps — minimize PII in the plugin and attach payload.
+- `reason` is a closed enum; raw Salesforce errors may be attached length-capped and neutralized at model entry.
+- **Sandbox findings must not remediate into prod** — attach and router enforce org + `sandboxState` match before any write path.
+- Failed probe keeps last-good on disk; do not overwrite with a speculative F or A from missing data.
+
+Full acceptance tests: H1–H10 in [docs/ADVERSARIAL-REVIEW-2026-09-15.md](./docs/ADVERSARIAL-REVIEW-2026-09-15.md).
+
+### Scoring honesty
+
+Until H1–H10 pass in a real harness, copy in README, DEMO, and this doc **must not** claim:
+
+- “Graceful degradation” of hygiene scores
+- “Says so rather than guessing” when probes fail
+- Org-level **A–F letter grades** as truth
+
+Unknown probes → `unknown` availability, not 0% green limits, not 100 on null dimensions, not F when every object is denied.
+
+## Confirm-before-write matrix
+
+Writes are gated by explicit human confirm — not slogans, not `--yes`, not agent tools that bypass UI.
+
+| Write | Allowed on | Confirm UX | Forbidden |
+| --- | --- | --- | --- |
+| Pin org | any | none if same `IsSandbox`; confirm if crossing sandbox↔prod | Agent pin without UI |
+| TraceFlag / log | sandbox default; prod extra | type org alias | `--yes`, silent prod flag, MCP write tool |
+| FLS / perm change | sandbox first | type alias + field list | “missing Edit → invent field” |
+| Flow activate / metadata deploy | sandbox first | type `PROD` + alias on prod | Agent deploy from context pack |
+| User freeze | prod allowed, extra | type username | batch freeze from agent |
+
+**Hard rules:**
+
+- No hidden `--force` or remembered confirm across orgs.
+- No silent `--yes` on prod writes.
+- Context pack ≠ write authority.
+- Hosted SObject MCP writes (if any) are out of scope until Tooling/Metadata paths exist with the same gate.
+
 ## Explicit non-goals (for now)
 
 - Rebuilding Lightning Setup or Full DX IDE in QML
@@ -70,6 +169,8 @@ The admin at a sharp tech company opens Omarchy and sees: which org is hot, whic
 - Seller-only CRM chrome as the headline (can layer later)
 - **Salesforce getting-started / empty-org onboarding** — assume the account exists; no Setup-for-beginners widget
 - Owning Salesforce admin training or Trailhead replacement
+- **Letter grades / org hygiene scores** until H1–H10 and the attach contract above are implemented
+- Claiming graceful degradation of scores without measured unknown handling
 
 ## Park rule
 
