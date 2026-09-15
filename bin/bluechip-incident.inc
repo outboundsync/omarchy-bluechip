@@ -320,9 +320,10 @@ _watch_nc_av() {
 }
 
 _watch_emit_jsonl() {
-  local event="$1" extra="$2"
+  local event="$1" extra="${2:-}"
   [[ "${WATCH_JSONL:-0}" -eq 1 ]] || return 0
-  jq -nc --arg e "$event" --argjson x "${extra:-{\}}" --argjson ts "$(date +%s)" \
+  [[ -n "$extra" ]] || extra='{}'
+  jq -nc --arg e "$event" --argjson x "$extra" --argjson ts "$(date +%s)" \
     --arg kind "$SIGNAL_KIND" --arg text "$SIGNAL_TEXT" --arg sev "$SIGNAL_SEV" \
     '{ts:$ts,event:$e,signal:{kind:$kind,text:$text,severity:$sev}} + $x'
 }
@@ -364,8 +365,13 @@ EOF
   done
 
   have_sf || die "sf CLI not found."
+  if [[ "$interval" =~ ^[0-9]+$ ]]; then
+    (( interval < WATCH_MIN_INTERVAL )) && interval="$WATCH_MIN_INTERVAL"
+  else
+    interval="$WATCH_MIN_INTERVAL"
+  fi
   if [[ $WATCH_JSONL -eq 0 ]]; then
-    command -v notify-send >/dev/null 2>&1 \
+    pinned_cmd notify-send >/dev/null 2>&1 \
       || printf '%s(note: notify-send not found — will print alerts to stdout)%s\n' "$DIM" "$RESET" >&2
   fi
   ensure_state_dir

@@ -4,6 +4,129 @@
 
 # Max length for Salesforce/API-sourced strings rendered to terminal, Waybar, or context.
 PLAIN_TEXT_MAX="${BLUECHIP_PLAINTEXT_MAX:-500}"
+SF_MAX_BYTES="${BLUECHIP_SF_MAX_BYTES:-1048576}"
+SF_TIMEOUT_SECS="${BLUECHIP_SF_TIMEOUT:-60}"
+FILE_MAX_BYTES="${BLUECHIP_FILE_MAX_BYTES:-1048576}"
+WATCH_MIN_INTERVAL="${BLUECHIP_WATCH_MIN:-5}"
+BLUECHIP_PINNED_PATH="${BLUECHIP_PINNED_PATH:-/usr/bin:/bin:/usr/local/bin}"
+
+# Resolve `sf` against the caller PATH (nvm / ~/.local) to an absolute path.
+# Do not pin PATH globally — node-based sf still needs nvm. notify-send /
+# xdg-open use pinned_cmd (/usr/bin or /bin only).
+bluechip_resolve_sf_bin() {
+  local bin="${1:-${SF_BIN:-sf}}" resolved=""
+  if [[ "$bin" == /* ]]; then
+    printf '%s' "$bin"
+    return 0
+  fi
+  resolved="$(command -v "$bin" 2>/dev/null || true)"
+  if [[ -n "$resolved" ]]; then
+    printf '%s' "$resolved"
+    return 0
+  fi
+  printf '%s' "$bin"
+}
+
+# Absolute /usr/bin or /bin only — never PATH lookup (cwd / poisoned PATH).
+pinned_cmd() {
+  local name="$1" p
+  [[ -n "$name" ]] || return 1
+  case "$name" in
+    */*|*..*|*" "*|*$'\n'*) return 1 ;;
+  esac
+  [[ "$name" =~ ^[A-Za-z0-9._+-]+$ ]] || return 1
+  for p in "/usr/bin/$name" "/bin/$name"; do
+    if [[ -f "$p" && -x "$p" ]]; then
+      printf '%s' "$p"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Refuse open/copy targets that look like URLs or flag-injection.
+path_is_unsafe() {
+  local p="${1:-}"
+  [[ -z "$p" ]] && return 0
+  [[ "$p" == *://* ]] && return 0
+  [[ "$p" == -* ]] && return 0
+  return 1
+}
+
+# Capture stdout of argv, cap bytes, discard stderr. Restores pipefail.
+# Does not rewrite PATH — `sf` may be a node script that needs nvm.
+# Returns: 0 command ok, 1 command failed, 2 oversize, 124 timeout.
+capped_stdout() {
+  local max="${1:-$SF_MAX_BYTES}" out="" sf_ec=0
+  shift
+  local -a cmd=("$@") runner=()
+  local timeout_bin="" head_bin=""
+  timeout_bin="$(pinned_cmd timeout || true)"
+  head_bin="$(pinned_cmd head || true)"
+  [[ -n "$head_bin" ]] || head_bin="head"
+  if [[ -n "$timeout_bin" ]]; then
+    runner=("$timeout_bin" --signal=TERM --kill-after=2 "${SF_TIMEOUT_SECS:-60}")
+  fi
+  set +o pipefail
+  out="$( "${runner[@]}" "${cmd[@]}" 2>/dev/null | "$head_bin" -c "$((max + 1))" )"
+  sf_ec=${PIPESTATUS[0]}
+  set -o pipefail
+  if [[ $sf_ec -eq 124 ]]; then
+    return 124
+  fi
+  if (( ${#out} > max )); then
+    return 2
+  fi
+  printf '%s' "$out"
+  if [[ $sf_ec -eq 141 || $sf_ec -eq 0 ]]; then
+    return 0
+  fi
+  return 1
+}
+
+read_capped_file() {
+  local f="$1" max="${2:-$FILE_MAX_BYTES}" out="" head_bin
+  [[ -n "$f" && -f "$f" ]] || return 1
+  [[ -L "$f" ]] && return 2
+  head_bin="$(pinned_cmd head || true)"
+  [[ -n "$head_bin" ]] || head_bin="head"
+  out="$("$head_bin" -c "$((max + 1))" "$f")"
+  if (( ${#out} > max )); then
+    return 3
+  fi
+  printf '%s' "$out"
+  return 0
+}
+
+notify_send_safe() {
+  local title="${1:-Bluechip}" body="${2:-}" urg="${3:-normal}" ns
+  title="$(neutralize_plaintext "$title" 80)"
+  body="$(neutralize_plaintext "$body" 240)"
+  case "$urg" in
+    low|normal|critical) ;;
+    *) urg="normal" ;;
+  esac
+  ns="$(pinned_cmd notify-send || true)"
+  [[ -n "$ns" ]] || return 1
+  PATH="${BLUECHIP_PINNED_PATH}" "$ns" -u "$urg" -a "Bluechip" -- "$title" "$body" >/dev/null 2>&1 || true
+}
+
+# xdg-open / copy helpers: argv array + -- ; refuse :// and leading -.
+safe_xdg_open() {
+  local target="$1" bin
+  path_is_unsafe "$target" && return 1
+  bin="$(pinned_cmd xdg-open || true)"
+  [[ -n "$bin" ]] || return 1
+  PATH="${BLUECHIP_PINNED_PATH}" "$bin" -- "$target" >/dev/null 2>&1
+}
+
+clipboard_ingest_ok() {
+  local s="${1:-}"
+  [[ -z "$s" ]] && return 1
+  path_is_unsafe "$s" && return 1
+  [[ "$s" == *$'\n'* || "$s" == *$'\r'* ]] && return 1
+  return 0
+}
 
 # True when value looks like a Salesforce 15- or 18-char org id.
 sf_org_id_ok() {
@@ -31,7 +154,8 @@ neutralize_plaintext() {
 
 # Raw org id from snapshot JSON (may be empty or invalid).
 org_id_raw() {
-  local snap="${1:-\{\}}"
+  local snap="${1-}"
+  [[ -n "$snap" ]] || snap='{}'
   jq -r '.display.id // .org.Id // empty' <<<"$snap" 2>/dev/null
 }
 

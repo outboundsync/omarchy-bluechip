@@ -201,6 +201,42 @@ def main() -> int:
                 bad("get_incident leaked a secret")
             else:
                 ok("get_incident has no secrets")
+
+        inj = rpc(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": 8,
+                "method": "tools/call",
+                "params": {"name": "get_limits", "arguments": {"org": "foo; rm -rf /"}},
+            },
+        )
+        itxt = inj["result"]["content"][0]["text"]
+        if inj["result"].get("isError") and "alias" in itxt:
+            ok("MCP rejects shell-shaped org alias")
+        else:
+            bad(f"MCP org injection: {itxt[:180]}")
+
+        fls_bad = rpc(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": 9,
+                "method": "tools/call",
+                "params": {
+                    "name": "get_fls",
+                    "arguments": {
+                        "user": "integration@example.com;cat /etc/passwd",
+                        "fields": "Account.Name",
+                    },
+                },
+            },
+        )
+        ftxt = fls_bad["result"]["content"][0]["text"]
+        if fls_bad["result"].get("isError"):
+            ok("MCP get_fls rejects metacharacter user")
+        else:
+            bad(f"MCP fls user injection: {ftxt[:180]}")
     finally:
         proc.kill()
         proc.wait(timeout=5)

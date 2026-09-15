@@ -2,6 +2,7 @@
 """Bluechip local MCP server — display-only. Shells out to bin/bluechip.
 
 No metadata deploy, no FLS write, no TraceFlag create. Reuses CLI business rules.
+Tool args are passed as an argv list (never interpolated into a shell).
 """
 from __future__ import annotations
 
@@ -21,9 +22,30 @@ DEFAULT_BIN = ROOT / "bin" / "bluechip"
 BLUECHIP = os.environ.get("BLUECHIP_BIN", str(DEFAULT_BIN))
 
 ORG_ALIAS_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+USER_RE = re.compile(r"^[A-Za-z0-9._%+\-@]{1,255}$")
+FIELD_REF_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,79}\.[A-Za-z][A-Za-z0-9_]{0,79}$")
+SINCE_RE = re.compile(
+    r"^(?:9am|[0-9]{1,2}(?::[0-9]{2})?(?:am|pm)?|[0-9]{4}-[0-9]{2}-[0-9]{2}"
+    r"(?:[T ][0-9]{2}:[0-9]{2}(?::[0-9]{2})?(?:Z|[+-][0-9]{2}:?[0-9]{2})?)?)$",
+    re.IGNORECASE,
+)
+
+MAX_STDOUT = 1_048_576
+MAX_STDERR = 65_536
+MAX_MCP_BODY = 1_048_576
+DEFAULT_TIMEOUT = 120
+PINNED_PATH_PREFIX = "/usr/bin:/bin:/usr/local/bin"
 
 
-def _bluechip(*args: str, timeout: int = 120) -> tuple[int, str, str]:
+def _tool_env() -> dict[str, str]:
+    """Keep HOME / sf-stub vars; prepend a pinned PATH so cwd impostors lose."""
+    env = os.environ.copy()
+    orig = env.get("PATH", "")
+    env["PATH"] = PINNED_PATH_PREFIX + ((":" + orig) if orig else "")
+    return env
+
+
+def _bluechip(*args: str, timeout: int = DEFAULT_TIMEOUT) -> tuple[int, str, str]:
     cmd = [BLUECHIP, "--no-color", *args]
     try:
         proc = subprocess.run(
@@ -31,13 +53,19 @@ def _bluechip(*args: str, timeout: int = 120) -> tuple[int, str, str]:
             capture_output=True,
             text=True,
             timeout=timeout,
-            env=os.environ.copy(),
+            env=_tool_env(),
         )
     except FileNotFoundError:
         return 127, "", "bluechip executable not found"
     except subprocess.TimeoutExpired:
         return 124, "", "bluechip timed out"
-    return proc.returncode, proc.stdout, proc.stderr
+    stdout = proc.stdout or ""
+    stderr = proc.stderr or ""
+    if len(stdout) > MAX_STDOUT:
+        stdout = stdout[:MAX_STDOUT]
+    if len(stderr) > MAX_STDERR:
+        stderr = stderr[:MAX_STDERR]
+    return proc.returncode, stdout, stderr
 
 
 def _org_args(arguments: dict) -> list[str]:
@@ -47,6 +75,32 @@ def _org_args(arguments: dict) -> list[str]:
     if not isinstance(org, str) or not ORG_ALIAS_RE.match(org):
         raise ValueError("org must be a Salesforce alias (letters, digits, . _ -)")
     return ["-o", org]
+
+
+def _validate_fls_user(user: str) -> str:
+    u = user.strip()
+    if not USER_RE.match(u) or any(ch in u for ch in ";|&$`\n\r"):
+        raise ValueError("user must be a username or Salesforce id")
+    return u
+
+
+def _validate_fls_fields(fields: str) -> str:
+    parts = [p.strip() for p in fields.split(",") if p.strip()]
+    if not parts:
+        raise ValueError("fields is required (Object.Field,...)")
+    if len(parts) > 40:
+        raise ValueError("too many fields (max 40)")
+    for p in parts:
+        if not FIELD_REF_RE.match(p):
+            raise ValueError(f"invalid field ref: {p}")
+    return ",".join(parts)
+
+
+def _validate_since(since: str) -> str:
+    s = since.strip()
+    if not SINCE_RE.match(s):
+        raise ValueError("since must be 9am, H:MM, or an ISO timestamp")
+    return s
 
 
 TOOLS = [
@@ -196,7 +250,12 @@ def call_tool(name: str, arguments: dict | None) -> dict:
             fields = ",".join(str(f) for f in fields)
         if not isinstance(fields, str) or not fields.strip():
             return _text_result("fields is required (Object.Field,...)", is_error=True)
-        code, out, err = _bluechip(*org, "--json", "fls", "--user", user.strip(), "--fields", fields.strip())
+        try:
+            user = _validate_fls_user(user)
+            fields = _validate_fls_fields(fields)
+        except ValueError as exc:
+            return _text_result(str(exc), is_error=True)
+        code, out, err = _bluechip(*org, "--json", "fls", "--user", user, "--fields", fields)
         text = out if out.strip() else err
         return _text_result(text or "{}", is_error=code != 0)
 
@@ -204,7 +263,10 @@ def call_tool(name: str, arguments: dict | None) -> dict:
         extra = ["--json", "offenders"]
         since = arguments.get("since")
         if isinstance(since, str) and since.strip():
-            extra.extend(["--since", since.strip()])
+            try:
+                extra.extend(["--since", _validate_since(since)])
+            except ValueError as exc:
+                return _text_result(str(exc), is_error=True)
         code, out, err = _bluechip(*org, *extra)
         text = out if out.strip() else err
         return _text_result(text or "{}", is_error=False)
@@ -266,6 +328,12 @@ def handle(msg: dict) -> dict | None:
         params = msg.get("params") or {}
         name = params.get("name") or ""
         arguments = params.get("arguments") or {}
+        if not isinstance(name, str) or not isinstance(arguments, dict):
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "error": {"code": -32602, "message": "invalid tools/call params"},
+            }
         result = call_tool(name, arguments)
         return {"jsonrpc": "2.0", "id": msg_id, "result": result}
 
@@ -277,20 +345,28 @@ def handle(msg: dict) -> dict | None:
 
 
 def _read_message() -> dict | None:
-    """Newline-delimited JSON, or LSP Content-Length framing."""
-    line = sys.stdin.buffer.readline()
+    """Newline-delimited JSON, or LSP Content-Length framing. Both size-capped."""
+    line = sys.stdin.buffer.readline(MAX_MCP_BODY + 1)
     if not line:
+        return None
+    if len(line) > MAX_MCP_BODY:
         return None
     if line.lower().startswith(b"content-length:"):
         try:
             length = int(line.split(b":", 1)[1].strip())
         except ValueError:
             return None
+        if length < 0 or length > MAX_MCP_BODY:
+            return None
         while True:
-            header = sys.stdin.buffer.readline()
+            header = sys.stdin.buffer.readline(1024)
             if header in (b"\r\n", b"\n", b""):
                 break
+            if not header:
+                return None
         body = sys.stdin.buffer.read(length)
+        if len(body) != length:
+            return None
         return json.loads(body.decode("utf-8"))
     text = line.decode("utf-8").strip()
     if not text:

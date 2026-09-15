@@ -4,8 +4,16 @@
 # Last-good cache is written only on ok|partial with measured data.
 
 hygiene_config() {
-  local f="$STATE_DIR/hygiene.json"
-  if [[ -f "$f" ]]; then cat "$f"; return; fi
+  local f="$STATE_DIR/hygiene.json" blob rc=0
+  if [[ -f "$f" ]]; then
+    blob="$(read_capped_file "$f" 65536)" || rc=$?
+    if [[ $rc -ne 0 || -z "$blob" ]]; then
+      echo "[]"
+      return 1
+    fi
+    printf '%s\n' "$blob"
+    return 0
+  fi
   cat <<'JSON'
 [
   {"api":"Lead","label":"Leads","filter":"IsConverted = false","fields":["Email","Phone","Company","Title","Industry"],"activityDays":90,"dupeField":"Email"},
@@ -462,16 +470,37 @@ compute_hygiene() {
   orgblob="$(hygiene_org_blob "$snap")"
 
   HY_SCAN_TRANSIENT=0
-  local tmp n idx
+  local tmp n idx jobs running=0
+  jobs="${BLUECHIP_HYGIENE_JOBS:-4}"
+  (( jobs < 1 )) && jobs=1
+  (( jobs > 8 )) && jobs=8
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/bluechip.XXXXXX")" || {
     hygiene_error_json transient "could not create temp dir"
     return 1
   }
   n="$(jq 'length' <<<"$cfg")"
+  _hygiene_kill_jobs() {
+    local p
+    for p in $(jobs -p 2>/dev/null); do
+      kill "$p" 2>/dev/null || true
+    done
+    wait 2>/dev/null || true
+  }
+  trap '_hygiene_kill_jobs; rm -rf "$tmp"' RETURN
   for ((idx=0; idx<n; idx++)); do
     hygiene_object "$(jq -c ".[$idx]" <<<"$cfg")" > "$tmp/$(printf '%02d' "$idx").json" 2>/dev/null &
+    running=$((running + 1))
+    if (( running >= jobs )); then
+      if ! wait -n 2>/dev/null; then
+        wait 2>/dev/null || true
+        running=0
+      else
+        running=$((running - 1))
+      fi
+    fi
   done
-  wait
+  wait 2>/dev/null || true
+  trap - RETURN
   local combined
   combined="$(cat "$tmp"/*.json 2>/dev/null | jq -s '.')"
   rm -rf "$tmp"
@@ -590,7 +619,7 @@ cmd_hygiene() {
 
   if [[ "$avail" == "unknown" || -z "$grade" || "$grade" == "null" ]]; then
     printf '\n  %sOrg data probe%s   %sunknown (not graded)%s   %s%s%s\n\n' \
-      "$BOLD" "$RESET" "$GREY" "$RESET" "$GREY" "$(org_name "${snap:-{\}}")" "$RESET"
+      "$BOLD" "$RESET" "$GREY" "$RESET" "$GREY" "$(org_name "${snap:-"{}"}")" "$RESET"
   else
     gcolor="$(hy_color "$score")"
     printf '\n  %sOrg data probe%s   %s%s%s %s(%s/100 · %s)%s   %s%s%s\n\n' \
