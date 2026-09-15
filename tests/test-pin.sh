@@ -41,14 +41,17 @@ setup_prod_pin() {
   printf '%s' "$home"
 }
 
-printf '%s\n' "bar — org id in chrome"
+printf '%s\n' "bar — compact identity + worst signal; org id in tooltip"
 BAR_HOME="$(setup_prod_pin)"
 BAR="$(env HOME="$BAR_HOME" XDG_CONFIG_HOME="$BAR_HOME/.config" \
   BLUECHIP_SF="$STUB" BLUECHIP_FIXTURE="$FIX/cross" \
   "$BLUECHIP" --no-color bar 2>/dev/null)"
-echo "$BAR" | jq -e '.text | test("00D0")' >/dev/null \
-  && ok "bar text includes truncated org id" \
-  || bad "bar missing org id: $BAR"
+echo "$BAR" | jq -e '.text | test("PROD")' >/dev/null \
+  && ok "bar text includes PROD identity" \
+  || bad "bar missing PROD: $BAR"
+echo "$BAR" | jq -e '.text | test("00D0") | not' >/dev/null \
+  && ok "bar text is compact (no truncated org id)" \
+  || bad "bar still shows org id in text: $BAR"
 echo "$BAR" | jq -e '.tooltip | test("Org Id: 00D000000000001AAA")' >/dev/null \
   && ok "bar tooltip has full org id" \
   || bad "bar tooltip missing full org id"

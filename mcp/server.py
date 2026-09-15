@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 PROTOCOL = "2024-11-05"
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 NAME = "bluechip"
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -63,12 +63,12 @@ TOOLS = [
     },
     {
         "name": "get_incident",
-        "description": "Alias of get_context — paste-ready incident bundle.",
+        "description": "Incident object (`bluechip incident --json`): worst signal + limits + Flow faults + named-cred summary + recent logs + markdown. Display-only; not write authority.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "org": {"type": "string"},
-                "json": {"type": "boolean"},
+                "json": {"type": "boolean", "description": "Ignored — always returns the incident JSON object"},
             },
         },
     },
@@ -176,7 +176,12 @@ def call_tool(name: str, arguments: dict | None) -> dict:
     except ValueError as exc:
         return _text_result(str(exc), is_error=True)
 
-    if name in ("get_context", "get_incident"):
+    if name == "get_incident":
+        code, out, err = _bluechip(*org, "--json", "incident")
+        text = out if out.strip() else err
+        return _text_result(text or "{}", is_error=code != 0)
+
+    if name == "get_context":
         extra = ["--json"] if arguments.get("json") else []
         code, out, err = _bluechip(*org, *extra, "context")
         text = out if out.strip() else err

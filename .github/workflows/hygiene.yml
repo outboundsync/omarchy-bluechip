@@ -23,3 +23,7 @@ jobs:
         run: |
           chmod +x tests/test-wave2.sh
           ./tests/test-wave2.sh
+      - name: UX pass (bar, incident, watch, help)
+        run: |
+          chmod +x tests/test-ux-pass.sh bin/bluechip-scratchpad
+          ./tests/test-ux-pass.sh

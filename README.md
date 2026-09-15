@@ -15,6 +15,7 @@ context hand-off, and a local **display-only MCP**. Rides your existing `sf` log
 **no Connected App required, no stored secrets.**
 
 Ranked remainder: [docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md).
+Harness UX (chip, verbs, incident, watch): [docs/UX-PASS.md](docs/UX-PASS.md).
 
 **ID:** `outboundsync.bluechip` · **Author:** OutboundSync / Harris Kenny · **License:** MIT
 
@@ -81,7 +82,11 @@ the CLI session cannot inherit. See [docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md)
 ## Install
 
 Requires **Omarchy** (or any Hyprland + Waybar setup), plus [`sf`](https://developer.salesforce.com/tools/salesforcecli)
-and `jq`.
+and `jq`. Default path (see [docs/UX-PASS.md](docs/UX-PASS.md)):
+
+**install → `sf org login web` → `bluechip doctor` → chip.**
+
+Composer pipeline: **`pin → pulse → probe → pack → agent → confirm write`**.
 
 ```bash
 git clone https://github.com/outboundsync/omarchy-bluechip
@@ -103,50 +108,71 @@ bluechip doctor           # screenshot your org
 // ... plus the "custom/bluechip": { ... } object from the snippet
 ```
 
-Then reload: `pkill -SIGUSR2 waybar`. The chip inherits your Omarchy theme's font; PROD stays
-quiet, **SANDBOX is loud**, UNKNOWN is neither. `bluechip bar --all` keeps that single-org
-chip chrome and puts the rest of the desk in the tooltip (each row has its own badge).
+Then reload: `pkill -SIGUSR2 waybar`. The chip is **identity + worst signal**
+(`SBX · 62%`, `PROD · 1 fault`, `? · ?`). PROD stays quiet, **SANDBOX is loud**,
+UNKNOWN is muted — never fake-green. Tooltip: worst signal first, then org id,
+then the click map. Progressive disclosure: bar = worst signal; `doctor` / `desk`
+= tables; `--json` / MCP = full graph.
 
-### Clipboard hotkey (optional)
+**Click map** (already in the snippet — copy is the contract):
 
-No desktop binding is required. If you want one on Hyprland:
+| Click | Action |
+| --- | --- |
+| left | pin org (`bluechip-switch`) |
+| middle | `bluechip doctor` in `$TERMINAL` |
+| right | refresh snapshot + Waybar |
+
+`bluechip bar --all` keeps that single-org chip chrome and puts the rest of the
+desk in the tooltip (each row has its own badge).
+
+Copy pack from the shell: `bluechip incident | wl-copy`.
+
+### Clipboard / copy pack (optional)
+
+No desktop binding is required. Copy pack:
+
+```bash
+bluechip incident | wl-copy
+bluechip clipboard --copy     # if the selection looks like a Flow / interview / org Id
+```
+
+Hyprland, if you want a hotkey:
 
 ```
 bind = SUPER SHIFT, V, exec, bluechip clipboard --copy
+bind = SUPER SHIFT, B, exec, bluechip-scratchpad
 ```
 
-Or `exec, bluechip-clipboard` (same thing, plus a `notify-send` toast). The CLI reads
-`wl-paste` / `xclip` / stdin. If the selection looks like a Flow API name (`Foo_Bar`),
-a Flow interview Id, or an org Id (`00D…`), Bluechip writes a context pack to
-`~/.config/bluechip/cache/clipboard-pack.md` (0600) and `--copy` puts it on the clipboard.
+`bluechip-clipboard` toasts **only on success**. Unrecognized selection stays
+quiet. The CLI reads `wl-paste` / `xclip` / stdin and **neutralizes** remote
+strings on ingest. Pack file: `~/.config/bluechip/cache/clipboard-pack.md` (0600).
+
+### Scratchpad (optional)
+
+`bluechip scratchpad` toggles a Hyprland special workspace and spawns
+`bluechip logs --follow` if missing (`--sf` for an `sf`+`jq` shell). No QML.
+`--print-bind` / `--dry-run` work without Hyprland.
 
 ## Commands
 
+Primary verbs (`bluechip help`). Advanced + stubs: `bluechip help --all`.
+Product SoT: [docs/UX-PASS.md](docs/UX-PASS.md). 60-second walkthrough:
+[docs/DEMO.md](docs/DEMO.md).
+
 | Command | What it does |
 | --- | --- |
-| `bluechip doctor` | Shareable org-vitals card — org, chrome, limits, last probe, Flow faults |
-| `bluechip bar` | Waybar JSON: org + PROD/SANDBOX/UNKNOWN + peak limit % (or `?%` if limits missed) |
+| `bluechip doctor [--json]` | Org-vitals card. `--json` is the incident object |
+| `bluechip bar` | Waybar JSON: `PROD\|SBX\|?` + worst signal (`62%` / `1 fault` / `?`) |
 | `bluechip bar --all` | Same chip chrome for the pin; tooltip lists desk orgs with **per-org** badges |
-| `bluechip desk` | Multi-org pulse: peak limit %, fault count, sandboxState (pin confirm when adding a crossing org) |
-| `bluechip limits` | Full limit-utilization table (amber/red) |
-| `bluechip hygiene [--json]` | Read-only data probe — completeness / freshness / duplicates / ownership |
-| `bluechip flows` | Errored / paused Flow interviews *(best-effort)* |
-| `bluechip changes` | Recent Setup Audit Trail — "what changed since Friday" |
-| `bluechip context [--json]` | Paste-ready incident bundle (display-only; not write authority) |
-| `bluechip clipboard [--copy]` | If clipboard is a Flow API name / interview Id / org Id → enrich context pack |
-| `bluechip named-creds [--json]` | Named / External Credential inspector (flags + principals; **never secrets**) |
-| `bluechip fls --user … --fields …` | FLS / perm-set matrix. Missing Read vs missing Edit. Unknown on query miss |
-| `bluechip fls-propose` | Same probe, plus a grant proposal. **Does not apply** |
-| `bluechip offenders [--since 9am]` | Ranked Event Log offenders; unknown (not 0) if Event Log / Flex unavailable |
-| `bluechip trace start\|status\|stop` | Confirm-gated TraceFlag (CLI only; type `PROD` on prod) |
-| `bluechip logs [--follow] [--body]` | Recent ApexLog tail — neutralized, size-capped |
+| `bluechip incident [--json]` | One pack: signal + limits + Flow faults + NC summary + logs + markdown |
+| `bluechip limits` | Full limit-utilization table (amber/red; unknown if Limits missed) |
+| `bluechip flows` | Errored / paused Flow interviews *(best-effort; none vs unknown)* |
+| `bluechip context [--json]` | Markdown incident bundle (display-only; not write authority) |
 | `bluechip orgs` / `pin <alias\|->` | List sf-authed orgs; pin one for Bluechip |
-| `bluechip mcp-config` | Print Cursor / Claude stdio MCP snippet |
-| `bluechip watch [secs]` | `mako` notification on amber→red limits / new flow faults |
-| `bluechip refresh` | Force-refresh the cached snapshot |
+| `bluechip watch [--jsonl] [--once]` | mako + Waybar `pulse` on real transitions only |
 
-`types` (Apex-defined type explorer) stays later — see
-[docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md).
+Pipes: `bluechip context | wl-copy` · `bluechip incident --json | jq .signal` ·
+`bluechip hygiene --json | jq .overall`
 
 Global: `-o/--org <alias>` (target one org), `--refresh`, `--json`, `--yes`
 (sandbox-only write confirm), `--no-color`.
@@ -156,8 +182,6 @@ Tune thresholds with env vars: `BLUECHIP_WARN_PCT` (75), `BLUECHIP_CRIT_PCT` (90
 
 Optional paid-attach deep-link (off by default): `BLUECHIP_REMEDIATE_URL`.
 Printed only when set, with “local probe ≠ OutboundSync product.”
-
-See [docs/DEMO.md](docs/DEMO.md) for a 60-second walkthrough.
 
 ## Local MCP (display-only)
 
@@ -184,9 +208,9 @@ Cursor / Claude Desktop snippet (`~/.cursor/mcp.json` or equivalent):
 }
 ```
 
-Tools: `get_context` / `get_incident`, `get_limits`, `list_flow_faults`,
-`get_hygiene`, `list_orgs` / `get_pin`, `get_named_creds`, `list_trace_flags`,
-`list_apex_logs`, `get_fls`, `list_offenders`, `get_desk`.
+Tools: `get_context`, `get_incident` (`bluechip incident --json`), `get_limits`,
+`list_flow_faults`, `get_hygiene`, `list_orgs` / `get_pin`, `get_named_creds`,
+`list_trace_flags`, `list_apex_logs`, `get_fls`, `list_offenders`, `get_desk`.
 **No TraceFlag create, no FLS apply, no pin write, no deploy.**
 
 ## Hygiene probe
@@ -222,15 +246,17 @@ never PROD when the Organization row is unreadable.
 
 ## Scope
 
-**On this branch (Wave 2):** org pin + three-valued chrome · API/limit pulse ·
-hygiene probe · Flow-fault list · Setup change feed · agent context pack ·
-Named Cred inspector · confirm-gated TraceFlag + log tail · FLS / perm-set
-matrix (read) + proposal-only diff · Event Log offenders · multi-org desk ·
-clipboard → context · local display-only MCP · `doctor` card · optional `watch`.
+**On this branch (Wave 2 + UX pass):** org pin + three-valued chrome · compact
+bar (`SBX · 62%`) · hygiene probe · Flow-fault list · Setup change feed ·
+**incident pack** · Named Cred inspector · confirm-gated TraceFlag + log tail ·
+FLS / perm-set matrix (read) + proposal-only diff · Event Log offenders ·
+multi-org desk · clipboard → context (toast on success) · scratchpad ·
+`watch` deltas · local display-only MCP · `doctor` card.
 
 **Deferred:** Apex type explorer · FLS/Flow apply · DX drift · sharing forensics ·
-Connected App / QML / marketplace · OutboundSync attach beyond an optional
-deep-link. See [docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md) and [VISION.md](VISION.md).
+Connected App / QML marketplace (Quattro panel = later Fabius) · OutboundSync
+attach beyond an optional deep-link. See [docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md)
+and [VISION.md](VISION.md).
 
 ## Limitations (honest)
 
@@ -251,7 +277,7 @@ deep-link. See [docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md) and [VISION.md](VISI
 ./scripts/test-hygiene.sh   # H1–H10 + limits-unknown + context UNKNOWN + SOQL allowlist + 700/600
 ./tests/test-plaintext.sh && ./tests/test-pin.sh
 ./tests/test-named-creds.sh && ./tests/test-trace.sh && python3 ./tests/test-mcp.sh
-./tests/test-wave2.sh
+./tests/test-wave2.sh && ./tests/test-ux-pass.sh
 ```
 
 No live org required (stub `sf` JSON fixtures).

@@ -177,6 +177,30 @@ def main() -> int:
             bad("context leaked token/secret")
         else:
             ok("get_context has no access token")
+
+        inc = rpc(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": 7,
+                "method": "tools/call",
+                "params": {"name": "get_incident", "arguments": {}},
+            },
+        )
+        itext = inc["result"]["content"][0]["text"]
+        try:
+            iblob = json.loads(itext)
+        except json.JSONDecodeError:
+            bad(f"get_incident not JSON: {itext[:180]}")
+        else:
+            if iblob.get("signal") and iblob.get("namedCreds") is not None and iblob.get("sandboxState") == "sandbox":
+                ok("get_incident JSON has signal + namedCreds + sandboxState")
+            else:
+                bad(f"get_incident shape: {itext[:220]}")
+            if "SUPER_SECRET" in itext or "SHOULD_NEVER_LEAK" in itext:
+                bad("get_incident leaked a secret")
+            else:
+                ok("get_incident has no secrets")
     finally:
         proc.kill()
         proc.wait(timeout=5)
