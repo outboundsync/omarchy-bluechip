@@ -1,13 +1,17 @@
-# Experimental side branch — not the product of record
+# Active build tip — Harris authorized ship 2026-09-15
 
-This `bluechip-v1` branch is an **experimental** CLI + Waybar chip. **`main` remains
-parked** until Harris unparks. Do not read this file as “v1 shipped on main.”
+This `bluechip-v1` branch is the **active build tip** for the MIT Salesforce
+admin cockpit on Omarchy. Harris authorized **ship everything** (Wave 1 first).
 
-The 2026-09-14 “Unparked → v1 shipped” banner was a process bug (adversarial
-review 2026-09-15, P0-2). Soft-unpark copy is withdrawn.
+**`main` may still hold the parked vision** until a later promote. Do not
+silently rewrite `main` from this branch — open a separate docs PR into `main`
+when it is time to promote the story.
 
-Connected App / QML / marketplace listing remain parked for v2. Do not scaffold
-those until Harris unparks.
+Wave 1 on this tip: local read-only MCP, Named Credential inspector, confirm-gated
+TraceFlag + neutralized log tail. Ranked remainder: [docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md).
+
+Connected App / QML / marketplace listing remain parked until a later wave
+needs them. Wave 1 rides `sf` CLI + Tooling-via-`sf` — no Connected App.
 
 The local `bluechip hygiene` probe is a **read-only MIT experiment**. It is not the
 OutboundSync product. Letter grades appear only when H1–H10 measured-data rules
@@ -16,7 +20,7 @@ cache.
 
 ---
 
-# Parked 2026-09-14 (still the rule on `main`)
+# Parked 2026-09-14 (still the rule on `main` until promote)
 
 **Name:** Bluechip (Harris + Agrippa).
 **Repo:** `outboundsync/omarchy-bluechip` (not kenhara).
@@ -24,6 +28,5 @@ cache.
 
 Vision: [VISION.md](./VISION.md)
 
-Do not scaffold QML, Connected App, or marketplace listing until Harris unparks.
-Fabius = Omarchy shell craft when build starts. Brutus = org/Connected App policy
-if needed. Dante keeps the parked story until told otherwise.
+Do not scaffold QML, Connected App, or marketplace listing until a wave requires
+them. Fabius = Omarchy shell craft. Brutus = org/Connected App policy if needed.

@@ -34,5 +34,20 @@ assert_eq "$(org_id "$SNAP_OK")" "00D000000000001AAA" "org_id from snapshot"
 assert_eq "$(org_id "$SNAP_EMPTY")" "unknown" "org_id missing → unknown"
 assert_eq "$(org_id_trunc "$SNAP_ID")" "00D0…1AAA" "org_id_trunc"
 
+printf '%s\n' "sandbox_state is a single token"
+SNAP_SBX='{"org":{"IsSandbox":true},"display":{"id":"00D000000000001AAA"}}'
+SNAP_PRD='{"org":{"IsSandbox":false},"display":{"id":"00D000000000001AAA"}}'
+SNAP_UNK='{"org":{},"display":{"id":"00D000000000001AAA"}}'
+assert_eq "$(sandbox_state "$SNAP_SBX")" "sandbox" "sandbox_state sandbox"
+assert_eq "$(sandbox_state "$SNAP_PRD")" "prod" "sandbox_state prod"
+assert_eq "$(sandbox_state "$SNAP_UNK")" "unknown" "sandbox_state unknown"
+assert_eq "$(sandbox_state "$SNAP_SBX" | tr '\n' '|')" "sandbox" "sandbox_state no extra newline"
+
+printf '%s\n' "url / secret helpers"
+assert_eq "$(strip_url_secrets 'https://api.example.com/v1?token=abc#x')" "https://api.example.com/v1" "strip query+fragment"
+REDACTED="$(jq -nc '{Password:"x",apiName:"Zoom",consumerSecret:"y"}' | redact_secrets_json)"
+assert_eq "$(jq -r 'has("Password")' <<<"$REDACTED")" "false" "redact Password key"
+assert_eq "$(jq -r '.apiName' <<<"$REDACTED")" "Zoom" "redact keeps apiName"
+
 printf '\n%s\n' "$PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

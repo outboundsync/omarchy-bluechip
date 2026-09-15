@@ -1,7 +1,8 @@
 # Bluechip — demo walkthrough
 
-A 60-second walkthrough of the **experimental** `bluechip-v1` side branch.
-`main` remains parked. This is not a launch kit for a letter-grade product.
+A 60-second walkthrough of Wave 1 on the `bluechip-v1` **active build tip**.
+`main` may still hold parked vision until a later promote. This is not a launch
+kit for a letter-grade product.
 
 ## The shots
 
@@ -48,6 +49,14 @@ bluechip hygiene --json   # availability / dimensions / error shape
 
 # 5. Hand-off for an agent (display-only — not write authority):
 bluechip context | wl-copy
+
+# 6. Named creds (never prints secrets) + confirm-gated debug:
+bluechip named-creds
+bluechip trace start          # type SANDBOX / alias; type PROD on prod
+bluechip logs --follow
+
+# 7. Local MCP (optional):
+bluechip mcp-config
 ```
 
 ## Why an admin cares (say this)
@@ -82,6 +91,9 @@ Do **not** use “What does yours get?” / letter-grade-as-org-truth copy.
 
 - Flow faults are **best-effort**: hard faults roll back and may not persist as
   `FlowInterview` rows.
-- v1 calls `sf org display`, `sf org list limits`, `sf data query`, and
-  `sf sobject describe`. **Not Tooling. Not Metadata.**
-- Hygiene acceptance tests: `./scripts/test-hygiene.sh` (H1–H10).
+- Wave 1 calls `sf org display`, `sf org list limits`, `sf data query`,
+  `sf sobject describe`, **Tooling** for NamedCredential / ExternalCredential /
+  TraceFlag / DebugLevel, `sf apex get log`, and Metadata **list** (names only)
+  as a fallback. **Not** Metadata retrieve/deploy.
+- Hygiene acceptance tests: `./scripts/test-hygiene.sh` (H1–H10). Wave 1:
+  `./tests/test-named-creds.sh`, `./tests/test-trace.sh`, `./tests/test-mcp.sh`.
