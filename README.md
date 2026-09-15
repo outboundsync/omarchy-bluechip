@@ -1,15 +1,12 @@
 # Bluechip
 
-![status: tip · MIT cockpit](https://img.shields.io/badge/status-tip%20·%20MIT%20cockpit%20(bluechip--v1)-blue) ![license: MIT](https://img.shields.io/badge/license-MIT-green) ![writes: confirm-gated TraceFlag](https://img.shields.io/badge/writes-confirm--gated%20TraceFlag-lightgrey)
+![status: tip · MIT cockpit](https://img.shields.io/badge/status-tip%20·%20MIT%20cockpit-blue) ![license: MIT](https://img.shields.io/badge/license-MIT-green) ![writes: confirm-gated TraceFlag](https://img.shields.io/badge/writes-confirm--gated%20TraceFlag-lightgrey)
 
 Salesforce **admin cockpit** for [Omarchy](https://omarchy.org). Pin an org, see
 whether it is **PROD / SANDBOX / UNKNOWN**, probe what is on fire, pack that for
 an agent, and confirm any write yourself.
 
 **`pin → pulse → probe → pack → agent → confirm write`**
-
-Rides your existing `sf` login. No Connected App. No stored secrets. Active tip:
-`bluechip-v1` (`main` may still hold parked vision).
 
 Harness: [docs/UX-PASS.md](docs/UX-PASS.md) · 60-second walkthrough:
 [docs/DEMO.md](docs/DEMO.md) · Remainder: [docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md)
@@ -119,6 +116,8 @@ Hygiene is exact-match and heuristic. Targets bash 5 / Linux (Omarchy).
 Salesforce I/O actually called: [VISION.md](VISION.md#api-honesty).
 Parked remainder: [docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md). Confirm matrix:
 [VISION.md](VISION.md#confirm-before-write-matrix).
+
+Implementers: ranked backlog on **[docs/SHIP-BACKLOG.md](./docs/SHIP-BACKLOG.md)**.
 
 ## Unofficial disclaimer
 

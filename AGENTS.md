@@ -4,7 +4,7 @@ Two audiences, one file. Humans already have [README.md](README.md),
 [docs/DEMO.md](docs/DEMO.md), [docs/UX-PASS.md](docs/UX-PASS.md). **Read this
 before changing the repo or acting on a pack.**
 
-- **Active tip:** `bluechip-v1`. PRs target that. `main` may hold parked vision — **never silently rewrite `main`.**
+- **Active tip:** `main`. PRs target `main`. `bluechip-v1` is a historical branch.
 - **MIT cockpit ≠ paid OutboundSync hygiene SKU.** No letter-grade marketing. Unknown ≠ fail / F.
 - Unofficial Salesforce language stays. Do not add Salesforce logos or “official” claims.
 
@@ -18,7 +18,7 @@ You are editing this OS repo. Harris/Janus merge. Do not ship productization tha
 
 ### Tip
 
-- Branch from and PR into **`bluechip-v1`**. Do not retarget `main` unless Harris asks to promote.
+- Branch from and PR into **`main`**.
 - Ranked remainder lives in [docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md). Do not duplicate long tables here.
 - Cleanup/hardening already shipped: [docs/CLEANUP-2026-09-15.md](docs/CLEANUP-2026-09-15.md).
 
@@ -75,7 +75,7 @@ You are editing this OS repo. Harris/Janus merge. Do not ship productization tha
 | `scripts/test-hygiene.sh` + `tests/` | H1–H10 and CLI/MCP suites |
 | `docs/UX-PASS.md` | Harness product SoT (chip, verbs, incident, watch) |
 | `docs/HYGIENE-ATTACH.md` | Paid-attach stub — not an implementation |
-| `docs/ADVERSARIAL-REVIEW-2026-09-15.md` | Pointer: canonical review is on `main` |
+| `docs/ADVERSARIAL-REVIEW-2026-09-15.md` | Historical Janus review (pre-promote); living contract is here |
 
 ### Do not invent
 

@@ -1,7 +1,6 @@
 # Bluechip ship backlog
 
-Honesty layer for `bluechip-v1` (active tip). `main` may still hold parked vision
-— do not silently rewrite `main`.
+Honesty layer for **`main`** (active tip). `bluechip-v1` is a historical branch.
 
 Agent contract: [AGENTS.md](../AGENTS.md). Recipes: [AGENT-PLAYBOOK.md](AGENT-PLAYBOOK.md).
 Confirm matrix: [VISION.md](../VISION.md#confirm-before-write-matrix). Salesforce
