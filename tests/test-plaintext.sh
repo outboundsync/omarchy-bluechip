@@ -25,7 +25,8 @@ assert_eq "$(neutralize_plaintext $'line\x07break')" "line break" "control chars
 assert_eq "$(neutralize_plaintext "$(printf 'x%.0s' {1..600})" 20)" "$(printf 'x%.0s' {1..20})…" "length cap"
 
 printf '%s\n' "org id helpers"
-assert_eq "$(sf_org_id_ok 00D000000000001AAA && echo yes || echo no)" "yes" "18-char org id ok"
+assert_eq "$(sf_org_id_ok 00D000000000001 && echo yes || echo no)" "yes" "15-char org id ok"
+assert_eq "$(sf_record_id_ok 005000000000001AAA && echo yes || echo no)" "yes" "18-char user id ok"
 assert_eq "$(sf_org_id_ok bogus && echo yes || echo no)" "no" "reject bogus id"
 SNAP_OK='{"display":{"id":"00D000000000001AAA"},"org":{"Id":"00D000000000001AAA"}}'
 SNAP_EMPTY='{}'
@@ -56,6 +57,8 @@ path_is_unsafe "/tmp/pack.md" && bad "normal path should be safe" || ok "normal 
 clipboard_ingest_ok "SavvyCal_Webhook" && ok "flow api ingest ok" || bad "flow api should ingest"
 clipboard_ingest_ok "https://evil.example" && bad "url ingest should refuse" || ok "url ingest refused"
 clipboard_ingest_ok "-evil" && bad "flag ingest should refuse" || ok "flag ingest refused"
+clipboard_ingest_ok $'line\nbreak' && bad "CR/LF ingest should refuse" || ok "newline ingest refused"
+clipboard_ingest_ok $'line\rbreak' && bad "CR ingest should refuse" || ok "CR ingest refused"
 safe_xdg_open "https://evil.example/x" && bad "xdg-open url should refuse" || ok "xdg-open url refused"
 safe_xdg_open "-o" && bad "xdg-open dash should refuse" || ok "xdg-open dash refused"
 

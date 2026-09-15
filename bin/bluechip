@@ -16,7 +16,7 @@
 #   --no-color          Plain output
 set -o pipefail
 
-BLUECHIP_VERSION="1.4.0"
+BLUECHIP_VERSION="1.5.0"
 SF_BIN="${BLUECHIP_SF:-sf}"
 DUPE_GROUP_CAP="${BLUECHIP_DUPE_CAP:-200}"
 SNAPSHOT_ERROR=""
@@ -24,14 +24,21 @@ SNAPSHOT_ERROR=""
 # ---------------------------------------------------------------------------
 # Paths / config
 # ---------------------------------------------------------------------------
+# Global (cross-org): pin map, hygiene probe config, alias→orgId index.
+# Org-bound artifacts live under orgs/<18charOrgId>/ — never reuse another
+# org's snapshot / last-good / clipboard pack after a pin switch.
 CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 STATE_DIR="$CONFIG_HOME/bluechip"
-CACHE_DIR="$STATE_DIR/cache"
+LEGACY_CACHE_DIR="$STATE_DIR/cache"
+ORGS_DIR="$STATE_DIR/orgs"
+CACHE_DIR="$LEGACY_CACHE_DIR"
 STATE_FILE="$STATE_DIR/state.json"
 SNAPSHOT_FILE="$CACHE_DIR/snapshot.json"
 WATCH_STATE="$CACHE_DIR/watch.json"
 HYGIENE_CACHE="$CACHE_DIR/hygiene.json"
 HYGIENE_ERROR_FILE="$CACHE_DIR/hygiene.error.json"
+CURRENT_ORG_ID=""
+ORG_CACHE_BOUND=0
 
 # Cache freshness for `bar` / `doctor` so Waybar never blocks on a slow API call.
 CACHE_TTL="${BLUECHIP_CACHE_TTL:-120}"
@@ -84,26 +91,191 @@ SF_BIN="$(bluechip_resolve_sf_bin "$SF_BIN")"
 # 700 on the state dir, 600 on cache/credentials — first write, every write.
 # Refuse to mkdir through a symlink. Exclusive create (mktemp = O_EXCL) + 0600.
 ensure_state_dir() {
-  local old_umask
+  local old_umask d
   old_umask="$(umask)"
   umask 077
-  mkdir -p "$STATE_DIR" "$CACHE_DIR"
-  umask "$old_umask"
-  if [[ -L "$STATE_DIR" || -L "$CACHE_DIR" ]]; then
-    die "refusing symlink state/cache dir"
+  mkdir -p "$STATE_DIR" "$LEGACY_CACHE_DIR" "$ORGS_DIR"
+  if [[ -n "${CACHE_DIR:-}" ]]; then
+    mkdir -p "$CACHE_DIR"
   fi
-  chmod 700 "$STATE_DIR" 2>/dev/null || true
-  chmod 700 "$CACHE_DIR" 2>/dev/null || true
+  umask "$old_umask"
+  for d in "$STATE_DIR" "$LEGACY_CACHE_DIR" "$ORGS_DIR" "$CACHE_DIR"; do
+    [[ -n "$d" ]] || continue
+    if [[ -L "$d" ]]; then
+      die "refusing symlink state/cache dir"
+    fi
+    chmod 700 "$d" 2>/dev/null || true
+  done
+}
+
+# Point artifact paths at orgs/<id>/ (or the legacy flat cache when unbound).
+_rebind_org_artifact_paths() {
+  SNAPSHOT_FILE="$CACHE_DIR/snapshot.json"
+  WATCH_STATE="$CACHE_DIR/watch.json"
+  HYGIENE_CACHE="$CACHE_DIR/hygiene.json"
+  HYGIENE_ERROR_FILE="$CACHE_DIR/hygiene.error.json"
+  NC_CACHE="$CACHE_DIR/named-creds.json"
+  NC_ERROR_FILE="$CACHE_DIR/named-creds.error.json"
+  FLS_CACHE="$CACHE_DIR/fls.json"
+  CLIP_PACK="$CACHE_DIR/clipboard-pack.md"
+}
+
+org_map_get() {
+  local alias="$1"
+  [[ -n "$alias" && -f "$STATE_FILE" ]] || return 1
+  jq -r --arg a "$alias" '.orgIds[$a] // empty' "$STATE_FILE" 2>/dev/null
+}
+
+org_map_set() {
+  local alias="${1:-}" oid="$2" blob
+  sf_org_id_ok "$oid" || return 1
+  ensure_state_dir
+  [[ -f "$STATE_FILE" ]] || echo '{}' | write_secure "$STATE_FILE"
+  blob="$(jq --arg id "$oid" --arg a "$alias" '
+    .lastOrgId = $id
+    | if ($a != "") then .orgIds = ((.orgIds // {}) + {($a): $id}) else . end
+  ' "$STATE_FILE" 2>/dev/null)" || return 1
+  printf '%s\n' "$blob" | write_secure "$STATE_FILE"
+}
+
+# Alias from -o / pin → org Id. Never fall back to lastOrgId when a pin is set
+# (that would serve the previous org after a switch).
+resolve_current_org_id() {
+  local alias oid
+  alias="${ORG_OVERRIDE:-}"
+  [[ -z "$alias" ]] && alias="$(pinned_org)"
+  if [[ -n "$alias" ]]; then
+    oid="$(org_map_get "$alias")"
+    if sf_org_id_ok "$oid"; then
+      printf '%s' "$oid"
+      return 0
+    fi
+    return 1
+  fi
+  [[ -f "$STATE_FILE" ]] || return 1
+  oid="$(jq -r '.lastOrgId // empty' "$STATE_FILE" 2>/dev/null)"
+  if sf_org_id_ok "$oid"; then
+    printf '%s' "$oid"
+    return 0
+  fi
+  return 1
+}
+
+bind_org_cache() {
+  local oid="${1:-}"
+  if [[ -z "$oid" ]]; then
+    oid="$(resolve_current_org_id || true)"
+  fi
+  if ! sf_org_id_ok "$oid"; then
+    CURRENT_ORG_ID=""
+    ORG_CACHE_BOUND=0
+    CACHE_DIR="$LEGACY_CACHE_DIR"
+    _rebind_org_artifact_paths
+    return 1
+  fi
+  CURRENT_ORG_ID="$oid"
+  ORG_CACHE_BOUND=1
+  CACHE_DIR="$ORGS_DIR/$oid"
+  _rebind_org_artifact_paths
+  ensure_state_dir
+  return 0
+}
+
+# Rebind org-scoped paths in the *current* shell. load_snapshot inside $() cannot
+# update CACHE_DIR for the caller — always follow a captured snapshot with this.
+follow_org_cache() {
+  local snap="${1:-}" oid
+  oid="$(org_id "$snap")"
+  if sf_org_id_ok "$oid"; then
+    bind_org_cache "$oid" || true
+    _adopt_org_sidecar || true
+    return 0
+  fi
+  bind_org_cache || true
+}
+
+# Capture snapshot JSON and bind artifact paths in the current shell (not $()).
+take_snapshot() {
+  local ec=0
+  SNAPSHOT_BLOB="$(load_snapshot)" || ec=$?
+  if [[ $ec -ne 0 || -z "${SNAPSHOT_BLOB:-}" ]]; then
+    SNAPSHOT_BLOB=""
+    return "$ec"
+  fi
+  follow_org_cache "$SNAPSHOT_BLOB"
+  return 0
+}
+
+_adopt_file() {
+  local src="$1" dest="$2" blob rc=0
+  [[ -f "$src" && ! -L "$src" ]] || return 1
+  [[ -e "$dest" ]] && return 0
+  blob="$(read_capped_file "$src" "$FILE_MAX_BYTES")" || rc=$?
+  [[ $rc -eq 0 && -n "$blob" ]] || return 1
+  printf '%s\n' "$blob" | write_secure "$dest"
+}
+
+# Copy last-good / watch / pack from the pre-1.5 flat cache only when the
+# artifact's org Id matches the bound org. Miss → refresh is always safe.
+_adopt_org_sidecar() {
+  sf_org_id_ok "${CURRENT_ORG_ID:-}" || return 1
+  local oid="$CURRENT_ORG_ID" hid
+  if [[ ! -f "$HYGIENE_CACHE" && -f "$LEGACY_CACHE_DIR/hygiene.json" && ! -L "$LEGACY_CACHE_DIR/hygiene.json" ]]; then
+    hid="$(jq -r '.org.id // empty' "$LEGACY_CACHE_DIR/hygiene.json" 2>/dev/null || true)"
+    [[ "$hid" == "$oid" ]] && _adopt_file "$LEGACY_CACHE_DIR/hygiene.json" "$HYGIENE_CACHE" || true
+  fi
+  if [[ ! -f "$NC_CACHE" && -f "$LEGACY_CACHE_DIR/named-creds.json" && ! -L "$LEGACY_CACHE_DIR/named-creds.json" ]]; then
+    hid="$(jq -r '.org.id // empty' "$LEGACY_CACHE_DIR/named-creds.json" 2>/dev/null || true)"
+    [[ "$hid" == "$oid" ]] && _adopt_file "$LEGACY_CACHE_DIR/named-creds.json" "$NC_CACHE" || true
+  fi
+  if [[ ! -f "$FLS_CACHE" && -f "$LEGACY_CACHE_DIR/fls.json" && ! -L "$LEGACY_CACHE_DIR/fls.json" ]]; then
+    hid="$(jq -r '.org.id // empty' "$LEGACY_CACHE_DIR/fls.json" 2>/dev/null || true)"
+    [[ "$hid" == "$oid" ]] && _adopt_file "$LEGACY_CACHE_DIR/fls.json" "$FLS_CACHE" || true
+  fi
+  if [[ ! -f "$WATCH_STATE" && -f "$LEGACY_CACHE_DIR/watch.json" && ! -L "$LEGACY_CACHE_DIR/watch.json" ]]; then
+    if [[ -f "$LEGACY_CACHE_DIR/snapshot.json" && ! -L "$LEGACY_CACHE_DIR/snapshot.json" ]]; then
+      hid="$(org_id "$(read_capped_file "$LEGACY_CACHE_DIR/snapshot.json" "$FILE_MAX_BYTES" 2>/dev/null || true)")"
+      [[ "$hid" == "$oid" ]] && _adopt_file "$LEGACY_CACHE_DIR/watch.json" "$WATCH_STATE" || true
+    fi
+  fi
+  if [[ ! -f "$CLIP_PACK" && -f "$LEGACY_CACHE_DIR/clipboard-pack.md" && ! -L "$LEGACY_CACHE_DIR/clipboard-pack.md" ]]; then
+    if [[ -f "$LEGACY_CACHE_DIR/snapshot.json" && ! -L "$LEGACY_CACHE_DIR/snapshot.json" ]]; then
+      hid="$(org_id "$(read_capped_file "$LEGACY_CACHE_DIR/snapshot.json" "$FILE_MAX_BYTES" 2>/dev/null || true)")"
+      [[ "$hid" == "$oid" ]] && _adopt_file "$LEGACY_CACHE_DIR/clipboard-pack.md" "$CLIP_PACK" || true
+    fi
+  fi
+}
+
+# One-shot: if the flat snapshot belongs to the current alias, move it under
+# orgs/<id>/. Never copy org A's snapshot onto org B.
+maybe_migrate_legacy() {
+  local alias="${ORG_OVERRIDE:-}" snap_alias lid blob
+  [[ -z "$alias" ]] && alias="$(pinned_org)"
+  local legacy="$LEGACY_CACHE_DIR/snapshot.json"
+  [[ -f "$legacy" && ! -L "$legacy" ]] || return 1
+  blob="$(read_capped_file "$legacy" "$FILE_MAX_BYTES")" || return 1
+  lid="$(org_id "$blob")"
+  sf_org_id_ok "$lid" || return 1
+  snap_alias="$(jq -r '.display.alias // empty' <<<"$blob" 2>/dev/null || true)"
+  [[ -n "$alias" && -n "$snap_alias" && "$alias" == "$snap_alias" ]] || return 1
+  bind_org_cache "$lid" || return 1
+  org_map_set "$alias" "$lid" || true
+  _adopt_file "$legacy" "$SNAPSHOT_FILE" || true
 }
 
 write_secure() { # <path>  (reads stdin)
-  local path="$1" dir tmp
+  local path="$1" dir tmp old_umask
   ensure_state_dir
   dir="$(dirname "$path")"
+  old_umask="$(umask)"
+  umask 077
+  mkdir -p "$dir"
+  umask "$old_umask"
   if [[ -L "$path" || -L "$dir" ]]; then
     printf 'bluechip: refusing to write through symlink: %s\n' "$path" >&2
     return 1
   fi
+  chmod 700 "$dir" 2>/dev/null || true
   tmp="$(mktemp "${path}.XXXXXX")" || return 1
   chmod 600 "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
   cat > "$tmp" || { rm -f "$tmp"; return 1; }
@@ -284,7 +456,8 @@ build_snapshot() {
     || { faults_why="$(classify_sf_error "$faults_raw")"; faults_n=""; }
 
   # Never persist the access token that `sf org display` includes. Never print Consumer Secret.
-  jq -n \
+  local blob oid alias
+  blob="$(jq -n \
     --argjson display "$display" \
     --argjson org "$org" \
     --argjson limits "$limits" \
@@ -304,19 +477,63 @@ build_snapshot() {
          count: (if $faultsN == "" then null else ($faultsN|tonumber) end),
          reason: (if $faultsWhy == "" then null else $faultsWhy end)
        }
-     }' | write_secure "$SNAPSHOT_FILE"
+     }')" || return 1
+  oid="$(org_id "$blob")"
+  if sf_org_id_ok "$oid"; then
+    bind_org_cache "$oid" || return 1
+    alias="${ORG_OVERRIDE:-}"
+    [[ -z "$alias" ]] && alias="$(pinned_org)"
+    org_map_set "$alias" "$oid" || true
+    _adopt_org_sidecar || true
+    printf '%s\n' "$blob" | write_secure "$SNAPSHOT_FILE"
+    return 0
+  fi
+  # Unknown org Id: do not persist a shared snapshot that a later pin could reuse.
+  return 1
+}
+
+_snapshot_belongs_to_bound_org() {
+  local blob="$1"
+  [[ "$ORG_CACHE_BOUND" == "1" ]] || return 1
+  [[ "$(org_id "$blob")" == "$CURRENT_ORG_ID" ]]
 }
 
 # Load a fresh-enough snapshot (build if stale / forced). Echoes the JSON.
+# Unbound (org Id unknown) never serves the flat/legacy cache as a hit.
 load_snapshot() {
   ensure_state_dir
-  if [[ $FORCE_REFRESH -eq 1 ]] || ! snapshot_is_fresh; then
-    build_snapshot || { [[ -f "$SNAPSHOT_FILE" ]] || return $?; }
+  bind_org_cache || true
+  maybe_migrate_legacy || true
+  bind_org_cache || true
+  if [[ "$ORG_CACHE_BOUND" == "1" ]]; then
+    _adopt_org_sidecar || true
   fi
   local blob rc=0
-  blob="$(read_capped_file "$SNAPSHOT_FILE" "$FILE_MAX_BYTES")" || rc=$?
-  [[ $rc -eq 0 && -n "$blob" ]] || return 1
-  printf '%s\n' "$blob"
+  if [[ $FORCE_REFRESH -eq 0 && "$ORG_CACHE_BOUND" == "1" ]] && snapshot_is_fresh; then
+    blob="$(read_capped_file "$SNAPSHOT_FILE" "$FILE_MAX_BYTES")" || rc=$?
+    if [[ $rc -eq 0 && -n "$blob" ]] && _snapshot_belongs_to_bound_org "$blob"; then
+      printf '%s\n' "$blob"
+      return 0
+    fi
+  fi
+  rc=0
+  build_snapshot || rc=$?
+  if [[ $rc -eq 0 ]]; then
+    blob="$(read_capped_file "$SNAPSHOT_FILE" "$FILE_MAX_BYTES")" || rc=$?
+    if [[ $rc -eq 0 && -n "$blob" ]]; then
+      printf '%s\n' "$blob"
+      return 0
+    fi
+  fi
+  if [[ "$ORG_CACHE_BOUND" == "1" && -f "$SNAPSHOT_FILE" ]]; then
+    blob="$(read_capped_file "$SNAPSHOT_FILE" "$FILE_MAX_BYTES")" || true
+    if [[ -n "$blob" ]] && _snapshot_belongs_to_bound_org "$blob"; then
+      printf '%s\n' "$blob"
+      return 0
+    fi
+  fi
+  [[ $rc -ne 0 ]] && return "$rc"
+  return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -395,10 +612,11 @@ cmd_bar() {
     return 0
   fi
   local snap
-  snap="$(load_snapshot 2>/dev/null)" || {
+  take_snapshot || {
     jq -nc '{text:"SF ?", tooltip:"bluechip: no org — run `sf org login web`\nclick: pin · middle: doctor", class:["unknown"]}'
     return 0
   }
+  snap="$SNAPSHOT_BLOB"
 
   local state envclass env
   state="$(sandbox_state "$snap")"
@@ -535,7 +753,7 @@ cmd_pin() {
     local cur; cur="$(pinned_org)"
     if [[ "${WANT_JSON:-0}" -eq 1 ]]; then
       local snap blob
-      snap="$(load_snapshot 2>/dev/null)" || snap=""
+      take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
       blob="$(org_json_blob "$snap")"
       jq -n --arg pin "$cur" --argjson org "$blob" \
         '{ok:true,pinnedOrg:(if $pin=="" then null else $pin end),org:$org,error:null}'
@@ -545,7 +763,7 @@ cmd_pin() {
     return 0
   fi
   if [[ "$alias" == "-" ]]; then
-    jq 'del(.pinnedOrg)' "$STATE_FILE" | write_secure "$STATE_FILE"
+    jq 'del(.pinnedOrg) | del(.lastOrgId)' "$STATE_FILE" | write_secure "$STATE_FILE"
     echo "Cleared pin — bluechip will use the sf default org."
   else
     have_sf || die "sf CLI not found."
@@ -560,6 +778,7 @@ cmd_pin() {
     fi
     pin_confirm_switch "$alias" "$to_state" "$to_id" || return 1
     jq --arg a "$alias" '.pinnedOrg = $a' "$STATE_FILE" | write_secure "$STATE_FILE"
+    org_map_set "$alias" "$to_id" || true
     if declare -F desk_remember_alias >/dev/null 2>&1; then
       desk_remember_alias "$alias"
     fi
@@ -582,7 +801,8 @@ bar_gauge() { # <pct> <width> -> ■■■■□□□□  (colored)
 
 cmd_limits() {
   have_sf || die "sf CLI not found."
-  local snap; snap="$(load_snapshot)" || die "could not read org limits."
+  local snap; take_snapshot || die "could not read org limits."
+  snap="$SNAPSHOT_BLOB"
   if [[ "${WANT_JSON:-0}" -eq 1 ]]; then
     local lav
     lav="$(jq -r '.limitsAvailability // "ok"' <<<"$snap")"
@@ -640,7 +860,7 @@ cmd_flows() {
     || {
       why="$(classify_sf_error "$raw")"
       if [[ "${WANT_JSON:-0}" -eq 1 ]]; then
-        local snap; snap="$(load_snapshot 2>/dev/null)" || snap=""
+        local snap; take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
         jq -n --argjson org "$(org_json_blob "$snap")" --arg c "$why" \
           '{ok:false,availability:"unknown",org:$org,interviews:[],note:"best-effort — hard faults may not persist",error:{code:$c,message:("FlowInterview query failed: "+$c)}}'
         return 0
@@ -650,7 +870,7 @@ cmd_flows() {
     }
   res="$(jq -c '.result' <<<"$raw")"
   if [[ "${WANT_JSON:-0}" -eq 1 ]]; then
-    local snap; snap="$(load_snapshot 2>/dev/null)" || snap=""
+    local snap; take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
     jq -n --argjson org "$(org_json_blob "$snap")" --argjson res "$res" '
       {
         ok: true,
@@ -689,7 +909,8 @@ cmd_flows() {
 
 cmd_context() {
   have_sf || die "sf CLI not found."
-  local snap; snap="$(load_snapshot)" || die "could not read org."
+  local snap; take_snapshot || die "could not read org."
+  snap="$SNAPSHOT_BLOB"
   set_oflag
   local flows changes logs
   flows="$(sf_json data query "${OFLAG[@]}" -q \
@@ -824,7 +1045,8 @@ cmd_doctor() {
     compute_incident
     return $?
   fi
-  local snap; snap="$(load_snapshot)" || die "could not read org — is an org authed? try: sf org login web"
+  local snap; take_snapshot || die "could not read org — is an org authed? try: sf org login web"
+  snap="$SNAPSHOT_BLOB"
 
   local state env envcolor name age
   state="$(sandbox_state "$snap")"
@@ -969,7 +1191,7 @@ EOF
 ${BOLD}ADVANCED${RESET}
   ${CYAN}hygiene${RESET}         Read-only data probe (measured / unknown; H1–H10)
   ${CYAN}changes${RESET}         Recent Setup Audit Trail (--json)
-  ${CYAN}clipboard${RESET}       Clipboard → context pack (toast on success only)
+  ${CYAN}clipboard${RESET}       Clipboard → context pack (--pack-callout; toast on success only)
   ${CYAN}named-creds${RESET}     Named / External Credential inspector (never secrets)
   ${CYAN}callout-auth${RESET}    NC 401-class doctor (also named-creds --doctor)
   ${CYAN}types${RESET}           Apex-defined / HTTP Callout type explorer (read-only)
@@ -981,7 +1203,7 @@ ${BOLD}ADVANCED${RESET}
   ${CYAN}desk${RESET}            Multi-org pulse (per-org chrome)
   ${CYAN}trace${RESET}           start | status | stop — confirm-gated TraceFlag (CLI only)
   ${CYAN}logs${RESET}            Recent ApexLog [--follow] [--body]
-  ${CYAN}scratchpad${RESET}      Hyprland special workspace (logs --follow / --sf / --boundary)
+  ${CYAN}scratchpad${RESET}      Hyprland special workspace (--boundary --dry-run is CI-safe)
   ${CYAN}refresh${RESET}         Force-refresh the cached snapshot
   ${CYAN}mcp-config${RESET}      Print Cursor/Claude MCP stdio snippet
   ${CYAN}version${RESET}

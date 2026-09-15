@@ -29,7 +29,7 @@ Harness: [docs/UX-PASS.md](docs/UX-PASS.md) · 60-second walkthrough:
 - **Your `sf` login.** Everything shells out to `sf ... --json` under your session.
 - **No secrets stored or printed.** Access tokens are stripped before cache;
   Named Cred inspector never shows secrets. State lives in `~/.config/bluechip/`
-  (`chmod 700`; cache/credentials `0600`).
+  (`chmod 700`; org-bound caches under `orgs/<orgId>/`; files `0600`).
 
 ## Install
 
@@ -63,8 +63,9 @@ The chip is **identity + worst signal** (`SBX · 62%`, `PROD · 1 fault`, `? · 
 PROD stays quiet, SANDBOX is loud, UNKNOWN is muted — never fake-green.
 Left-click pins, middle opens `doctor`, right refreshes.
 
-Copy pack: `bluechip incident | wl-copy`. Optional Hyprland binds and scratchpad:
-[docs/UX-PASS.md](docs/UX-PASS.md).
+Copy pack: `bluechip incident | wl-copy`. Optional Hyprland binds, scratchpad,
+and the boundary desk (`bluechip scratchpad --boundary --dry-run`):
+[docs/UX-PASS.md](docs/UX-PASS.md#scratchpad).
 
 ## Common jobs
 

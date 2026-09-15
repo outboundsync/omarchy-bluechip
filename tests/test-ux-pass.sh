@@ -111,8 +111,13 @@ PY
 HOME_W="$WORKDIR/watch-cross"
 mkdir -p "$HOME_W/.config/bluechip/cache"
 chmod 700 "$HOME_W/.config/bluechip"
-printf '{"peakSev":"ok","faultCount":0}\n' > "$HOME_W/.config/bluechip/cache/watch.json"
-chmod 600 "$HOME_W/.config/bluechip/cache/watch.json"
+HOME="$HOME_W" XDG_CONFIG_HOME="$HOME_W/.config" \
+  BLUECHIP_SF="$STUB" BLUECHIP_FIXTURE="$CRIT" \
+  "$BLUECHIP" --no-color --refresh bar >/dev/null 2>&1 || true
+ORG_W="$HOME_W/.config/bluechip/orgs/00D000000000002AAA"
+mkdir -p "$ORG_W"
+printf '{"peakSev":"ok","faultCount":0}\n' > "$ORG_W/watch.json"
+chmod 600 "$ORG_W/watch.json"
 WX="$(HOME="$HOME_W" XDG_CONFIG_HOME="$HOME_W/.config" \
   BLUECHIP_SF="$STUB" BLUECHIP_FIXTURE="$CRIT" \
   "$BLUECHIP" --no-color --refresh watch --once --jsonl 2>/dev/null)"
@@ -124,6 +129,9 @@ BIND="$("$ROOT/bin/bluechip-scratchpad" --print-bind)"
 echo "$BIND" | grep -q 'bluechip-scratchpad' && ok "print-bind mentions helper" || bad "print-bind: $BIND"
 DRY="$("$ROOT/bin/bluechip-scratchpad" --dry-run)"
 echo "$DRY" | grep -q 'logs --follow' && ok "dry-run spawns logs --follow" || bad "dry-run: $DRY"
+BDRY="$("$ROOT/bin/bluechip-scratchpad" --boundary --dry-run)"
+echo "$BDRY" | grep -q 'hyprctl dispatch' && ok "boundary --dry-run prints hyprctl" || bad "boundary dry-run: $BDRY"
+echo "$BDRY" | grep -q 'wrangler tail' && ok "boundary --dry-run prints wrangler" || bad "boundary dry-run missing wrangler"
 SCRATCH="$("$BLUECHIP" --no-color scratchpad --print-bind 2>/dev/null)"
 echo "$SCRATCH" | grep -q 'SUPER SHIFT' && ok "bluechip scratchpad --print-bind" || bad "cli scratchpad bind missing"
 

@@ -11,8 +11,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq
       - name: H1–H10 hygiene acceptance
         run: ./scripts/test-hygiene.sh
-      - name: P2 unit tests (plaintext + pin boundary)
-        run: ./tests/test-plaintext.sh && ./tests/test-pin.sh
+      - name: P2 unit tests (plaintext + pin boundary + org-scoped cache)
+        run: |
+          chmod +x tests/test-org-scope.sh
+          ./tests/test-plaintext.sh && ./tests/test-pin.sh && ./tests/test-org-scope.sh
       - name: Wave 1 (named-creds, trace/logs, MCP)
         run: |
           chmod +x tests/test-named-creds.sh tests/test-trace.sh tests/test-mcp.sh

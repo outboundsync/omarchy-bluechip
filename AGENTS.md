@@ -28,7 +28,7 @@ You are editing this OS repo. Harris/Janus merge. Do not ship productization tha
 
 ```bash
 ./scripts/test-hygiene.sh          # H1–H10 + limits-unknown + context UNKNOWN + SOQL allowlist + 700/600
-./tests/test-plaintext.sh && ./tests/test-pin.sh
+./tests/test-plaintext.sh && ./tests/test-pin.sh && ./tests/test-org-scope.sh
 ./tests/test-named-creds.sh && ./tests/test-trace.sh && python3 ./tests/test-mcp.sh
 ./tests/test-wave2.sh && ./tests/test-ux-pass.sh
 ./tests/test-flow-build.sh
@@ -47,7 +47,7 @@ You are editing this OS repo. Harris/Janus merge. Do not ship productization tha
 
 - Never `SELECT ParameterValue` / `Password` / Consumer Secret / Authorization values.
 - Strip `accessToken` (and sibling secret keys) before cache or packs. `redact_secrets_json` on JSON.
-- State dir `~/.config/bluechip/` **0700**; cache / credentials files **0600**. No symlink dest/parent writes.
+- State dir `~/.config/bluechip/` **0700**; org-bound artifacts under `orgs/<18charOrgId>/` **0700**; cache / credentials files **0600**. No symlink dest/parent writes. Pin map / hygiene config stay global.
 - Neutralize remote strings (Flow labels, Setup Audit Trail, log lines) at model entry.
 
 ### Writes

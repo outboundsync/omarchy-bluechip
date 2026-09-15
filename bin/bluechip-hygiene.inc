@@ -466,7 +466,7 @@ compute_hygiene() {
   fi
 
   local snap orgblob
-  snap="$(load_snapshot 2>/dev/null)" || snap=""
+  take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
   orgblob="$(hygiene_org_blob "$snap")"
 
   HY_SCAN_TRANSIENT=0
@@ -527,6 +527,8 @@ compute_hygiene() {
 }
 
 hygiene_doctor_line() {
+  bind_org_cache || true
+  _adopt_org_sidecar || true
   local f="$HYGIENE_CACHE" e="$HYGIENE_ERROR_FILE"
   [[ -f "$f" ]] || { printf '%sunknown (not run)%s' "$GREY" "$RESET"; return; }
   local avail grade score
@@ -612,7 +614,7 @@ cmd_hygiene() {
   fi
 
   local snap avail grade score gcolor
-  snap="$(load_snapshot 2>/dev/null)" || snap=""
+  take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
   avail="$(jq -r '.availability' <<<"$h")"
   grade="$(jq -r '.overall.grade // empty' <<<"$h")"
   score="$(jq -r '.overall.score // empty' <<<"$h")"

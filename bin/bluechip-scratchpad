@@ -2,10 +2,12 @@
 # bluechip-scratchpad — Hyprland special-workspace summon for logs / sf+jq.
 # Spawn-if-missing. No QML. Bind is optional:
 #   bind = SUPER SHIFT, B, exec, bluechip-scratchpad
+# Boundary desk (Worker + org tail) is a printed recipe; --apply is opt-in.
 set -euo pipefail
 
 TITLE="bluechip-scratchpad"
 WORKSPACE="bluechip"
+BOUNDARY_WORKSPACE="bluechip-boundary"
 BLUECHIP_BIN="${BLUECHIP_BIN:-bluechip}"
 command -v "$BLUECHIP_BIN" >/dev/null 2>&1 || BLUECHIP_BIN="$(dirname "$0")/bluechip"
 
@@ -16,11 +18,18 @@ bluechip scratchpad — Hyprland special workspace for a live org shell
   scratchpad           Toggle special:${WORKSPACE}; spawn logs --follow if missing
   scratchpad --sf      Spawn/focus an sf + jq session instead of log tail
   scratchpad --boundary
-                       Print the two commands for Worker + org boundary debug
-                       (chip stays ambient; no QML)
+                       Print the Worker + org tail pair and a small hyprctl
+                       recipe (chip stays ambient; Setup browser is the canvas;
+                       no QML). wrangler does not need to be installed.
+  scratchpad --boundary --dry-run
+                       Print the recipe only (no Hyprland required; CI-safe)
+  scratchpad --boundary --apply
+                       If hyprctl is present, dispatch the recipe; otherwise
+                       print it. Idempotent.
   scratchpad --dry-run Print the spawn command (no Hyprland required)
   scratchpad --print-bind
-                       Print a Hyprland bind line
+                       Print a Hyprland bind line (add --boundary for the
+                       boundary-apply bind)
 
 Default session: ${BLUECHIP_BIN} logs --follow
 sf session:      hint + interactive bash (jq/sf on PATH)
@@ -31,33 +40,20 @@ EOF
 
 SESSION="logs"
 DRY=0
+BOUNDARY=0
+APPLY=0
+PRINT_BIND=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --sf) SESSION="sf"; shift ;;
     --dry-run|--dry) DRY=1; shift ;;
-    --print-bind)
-      printf 'bind = SUPER SHIFT, B, exec, bluechip-scratchpad\n'
-      exit 0
-      ;;
-    --boundary)
-      cat <<EOF
-# Boundary desk — chip stays ambient. No QML.
-# Scratchpad tails org ApexLog; wrangler tails the Worker.
-${BLUECHIP_BIN} logs --follow
-wrangler tail
-EOF
-      exit 0
-      ;;
+    --apply) APPLY=1; shift ;;
+    --boundary) BOUNDARY=1; shift ;;
+    --print-bind) PRINT_BIND=1; shift ;;
     help|-h|--help) usage; exit 0 ;;
     *) printf 'bluechip-scratchpad: unknown option %s\n' "$1" >&2; usage >&2; exit 1 ;;
   esac
 done
-
-if [[ "$SESSION" == "sf" ]]; then
-  INNER='printf "%s\n" "bluechip scratchpad — sf + jq  (pin: bluechip pin, pulse: bluechip doctor --json | jq .signal)"; exec bash -l'
-else
-  INNER="${BLUECHIP_BIN} logs --follow; printf \"%s\\n\" \"log tail ended — shell kept\"; exec bash -l"
-fi
 
 term="${TERMINAL:-}"
 if [[ -z "$term" ]]; then
@@ -68,15 +64,83 @@ fi
 term="${term:-xterm}"
 base="$(basename "$term")"
 
-spawn_cmd=()
-case "$base" in
-  kitty)    spawn_cmd=(kitty --class "$TITLE" --title "$TITLE" -e bash -lc "$INNER") ;;
-  ghostty)  spawn_cmd=(ghostty --class="$TITLE" "--title=$TITLE" -e bash -lc "$INNER") ;;
-  foot)     spawn_cmd=(foot --app-id "$TITLE" -T "$TITLE" bash -lc "$INNER") ;;
-  alacritty) spawn_cmd=(alacritty --class "$TITLE" -T "$TITLE" -e bash -lc "$INNER") ;;
-  wezterm)  spawn_cmd=(wezterm start --class "$TITLE" -- bash -lc "$INNER") ;;
-  *)        spawn_cmd=("$term" -T "$TITLE" -e bash -lc "$INNER") ;;
-esac
+fill_spawn() {
+  # nameref-style: caller passes array name via eval-free assignment into spawn_cmd
+  local cls="$1" inner="$2"
+  spawn_cmd=()
+  case "$base" in
+    kitty)     spawn_cmd=(kitty --class "$cls" --title "$cls" -e bash -lc "$inner") ;;
+    ghostty)   spawn_cmd=(ghostty --class="$cls" --title="$cls" -e bash -lc "$inner") ;;
+    foot)      spawn_cmd=(foot --app-id "$cls" -T "$cls" bash -lc "$inner") ;;
+    alacritty) spawn_cmd=(alacritty --class "$cls" -T "$cls" -e bash -lc "$inner") ;;
+    wezterm)   spawn_cmd=(wezterm start --class "$cls" -- bash -lc "$inner") ;;
+    *)         spawn_cmd=("$term" -T "$cls" -e bash -lc "$inner") ;;
+  esac
+}
+
+hypr_client_named() {
+  local cls="$1"
+  command -v hyprctl >/dev/null 2>&1 || return 1
+  hyprctl clients -j 2>/dev/null | jq -e --arg t "$cls" '
+    .[] | select((.title // "") == $t or (.class // "") == $t or (.initialClass // "") == $t)
+  ' >/dev/null 2>&1
+}
+
+boundary_recipe() {
+  cat <<EOF
+# Boundary desk — chip stays ambient. Setup browser is the human canvas. No QML.
+# Scratchpad tails org ApexLog; wrangler tails the Worker (not required to be installed).
+${BLUECHIP_BIN} logs --follow
+wrangler tail
+
+# Hyprland recipe (idempotent). --dry-run / --print-bind work without Hyprland.
+hyprctl dispatch togglespecialworkspace ${BOUNDARY_WORKSPACE}
+hyprctl dispatch exec ${term} --class bluechip-logs --title bluechip-logs -e ${BLUECHIP_BIN} logs --follow
+hyprctl dispatch exec ${term} --class bluechip-wrangler --title bluechip-wrangler -e wrangler tail
+hyprctl dispatch movetoworkspacesilent special:${BOUNDARY_WORKSPACE},class:bluechip-logs
+hyprctl dispatch movetoworkspacesilent special:${BOUNDARY_WORKSPACE},class:bluechip-wrangler
+EOF
+}
+
+if [[ $PRINT_BIND -eq 1 ]]; then
+  printf 'bind = SUPER SHIFT, B, exec, bluechip-scratchpad\n'
+  if [[ $BOUNDARY -eq 1 ]]; then
+    printf 'bind = SUPER SHIFT, N, exec, bluechip-scratchpad --boundary --apply\n'
+  fi
+  exit 0
+fi
+
+if [[ $BOUNDARY -eq 1 ]]; then
+  boundary_recipe
+  if [[ $DRY -eq 1 ]]; then
+    exit 0
+  fi
+  if [[ $APPLY -eq 1 ]] && command -v hyprctl >/dev/null 2>&1; then
+    hyprctl dispatch togglespecialworkspace "$BOUNDARY_WORKSPACE" >/dev/null 2>&1 || true
+    if ! hypr_client_named bluechip-logs; then
+      fill_spawn bluechip-logs "${BLUECHIP_BIN} logs --follow; printf \"%s\\n\" \"log tail ended — shell kept\"; exec bash -l"
+      "${spawn_cmd[@]}" >/dev/null 2>&1 &
+      disown || true
+    fi
+    if ! hypr_client_named bluechip-wrangler; then
+      fill_spawn bluechip-wrangler 'printf "%s\n" "wrangler tail — Worker (install wrangler if this is empty)"; command -v wrangler >/dev/null && wrangler tail; exec bash -l'
+      "${spawn_cmd[@]}" >/dev/null 2>&1 &
+      disown || true
+    fi
+    sleep 0.2
+    hyprctl dispatch movetoworkspacesilent "special:${BOUNDARY_WORKSPACE},class:bluechip-logs" >/dev/null 2>&1 || true
+    hyprctl dispatch movetoworkspacesilent "special:${BOUNDARY_WORKSPACE},class:bluechip-wrangler" >/dev/null 2>&1 || true
+  fi
+  exit 0
+fi
+
+if [[ "$SESSION" == "sf" ]]; then
+  INNER='printf "%s\n" "bluechip scratchpad — sf + jq  (pin: bluechip pin, pulse: bluechip doctor --json | jq .signal)"; exec bash -l'
+else
+  INNER="${BLUECHIP_BIN} logs --follow; printf \"%s\\n\" \"log tail ended — shell kept\"; exec bash -l"
+fi
+
+fill_spawn "$TITLE" "$INNER"
 
 if [[ $DRY -eq 1 ]]; then
   printf '%s\n' "${spawn_cmd[*]}"
@@ -86,18 +150,10 @@ fi
 have_hypr=0
 command -v hyprctl >/dev/null 2>&1 && have_hypr=1
 
-client_exists() {
-  [[ $have_hypr -eq 1 ]] || return 1
-  hyprctl clients -j 2>/dev/null | jq -e --arg t "$TITLE" '
-    .[] | select((.title // "") == $t or (.class // "") == $t or (.initialClass // "") == $t)
-  ' >/dev/null 2>&1
-}
-
-if ! client_exists; then
+if ! hypr_client_named "$TITLE"; then
   "${spawn_cmd[@]}" >/dev/null 2>&1 &
   disown || true
   if [[ $have_hypr -eq 1 ]]; then
-    # Move the new window onto the special workspace when Hyprland sees it.
     sleep 0.2
     hyprctl dispatch movetoworkspacesilent "special:${WORKSPACE},class:${TITLE}" >/dev/null 2>&1 || true
   fi

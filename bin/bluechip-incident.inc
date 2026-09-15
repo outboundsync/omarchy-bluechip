@@ -84,6 +84,7 @@ bar_pulse_active() {
 }
 
 _incident_hygiene_blob() {
+  bind_org_cache || true
   local f="$HYGIENE_CACHE"
   if [[ ! -f "$f" ]]; then
     jq -nc '{availability:"unknown",reason:"not_run",grade:null,score:null}'
@@ -116,6 +117,7 @@ compute_incident() {
   have_sf || { probe_error_json sf_missing "sf CLI not found"; return 1; }
   local snap
   snap="$(load_snapshot)" || { probe_error_json "${SNAPSHOT_ERROR:-unauthenticated}" "could not read org"; return 1; }
+  follow_org_cache "$snap"
   set_oflag
 
   compute_bar_signal "$snap"
@@ -388,6 +390,7 @@ EOF
     pinned_cmd notify-send >/dev/null 2>&1 \
       || printf '%s(note: notify-send not found — will print alerts to stdout)%s\n' "$DIM" "$RESET" >&2
   fi
+  take_snapshot || true
   ensure_state_dir
   [[ -f "$WATCH_STATE" ]] || echo '{}' | write_secure "$WATCH_STATE"
   if [[ $once -eq 0 && $WATCH_JSONL -eq 0 ]]; then
@@ -399,12 +402,13 @@ EOF
     local snap prevsev prevfaults prevnc
     WATCH_PULSE_UNTIL="$(jq -r '.pulseUntil // 0' "$WATCH_STATE" 2>/dev/null || echo 0)"
     WATCH_LAST_EVENT="$(jq -r '.lastEvent // "heartbeat"' "$WATCH_STATE" 2>/dev/null || echo heartbeat)"
-    snap="$(load_snapshot 2>/dev/null)" || {
+    take_snapshot || {
       _watch_emit_jsonl "unreadable" '{"ok":false}'
       [[ $once -eq 1 ]] && return 0
       sleep "$interval"
       continue
     }
+    snap="$SNAPSHOT_BLOB"
     compute_bar_signal "$snap"
     prevsev="$(jq -r '.peakSev // empty' "$WATCH_STATE" 2>/dev/null || true)"
     prevfaults="$(jq -r '.faultCount // empty' "$WATCH_STATE" 2>/dev/null || true)"
@@ -487,7 +491,7 @@ cmd_changes() {
     || {
       why="$(classify_sf_error "$raw")"
       if [[ $want_json -eq 1 ]]; then
-        local snap; snap="$(load_snapshot 2>/dev/null)" || snap=""
+        local snap; take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
         jq -n --argjson org "$(org_json_blob "$snap")" --arg c "$why" \
           '{ok:false,availability:"unknown",org:$org,changes:[],error:{code:$c,message:("SetupAuditTrail query failed: "+$c)}}'
         return 0
@@ -498,7 +502,7 @@ cmd_changes() {
   local res
   res="$(jq -c '.result' <<<"$raw")"
   if [[ $want_json -eq 1 ]]; then
-    local snap; snap="$(load_snapshot 2>/dev/null)" || snap=""
+    local snap; take_snapshot || true; snap="${SNAPSHOT_BLOB:-}"
     jq -n --argjson org "$(org_json_blob "$snap")" --argjson res "$res" '
       {
         ok: true,
