@@ -1,20 +1,21 @@
-# Bluechip vision (parked) — admin cockpit
+# Bluechip vision — admin cockpit
 
-**Locked direction 2026-09-14:** primary user is a **Salesforce System Administrator** on Omarchy (bleeding-edge / agentic Linux desktop). Seller lookup chip is a possible later wedge, not the mountain.
-
-Unofficial · works with Salesforce® · not affiliated with Salesforce, Inc.
-
-## Why this person
-
-Omarchy’s early users skew technical, agent-native, allergic to browser tax. That maps to Salesforce admins and platform owners more than to AE seat-only sellers. Build for the person who *runs* the org.
+Primary user: a **Salesforce System Administrator** on Omarchy. Seller lookup is
+a later wedge, not the mountain.
 
 ## The job
 
-Make Omarchy the **best place on earth to operate and troubleshoot a Salesforce org** — especially sandboxes, broken automations, and limit pressure — with agents as force multipliers and a human confirm gate on anything that writes.
+Operate and troubleshoot a Salesforce org from the Linux desk — especially
+sandboxes, broken automations, and limit pressure — with agents as force
+multipliers and a human confirm gate on anything that writes. Lightning Setup
+is the occasional deep link, not the home screen.
+
+Build for the person who *runs* the org: technical, agent-native, allergic to
+browser tax.
 
 ## Three surfaces (do not collapse)
 
-These are three products. Mixing them was the v1 copy bug.
+These are three products. Mixing them was the copy bug.
 
 | Surface | License | What it is | What it is not |
 | --- | --- | --- | --- |
@@ -24,11 +25,11 @@ These are three products. Mixing them was the v1 copy bug.
 
 `sandboxState` is three-valued everywhere (`prod` \| `sandbox` \| `unknown`). Never print PROD when Organization/IsSandbox is unreadable.
 
-Beachhead (first ship, recommend): **org pin + hard chrome + limits + Flow faults + context pack**. Hygiene attach is the invoice line, not the first QML surface.
+The cockpit epicenter is **org pin + hard chrome + limits + Flow faults + context pack**. Hygiene attach is the invoice line, not a QML surface.
 
 ## Confirm-before-write matrix
 
-Writes only after explicit confirm. This table is the gate; slogans are not.
+Writes only after explicit confirm. This table is the gate.
 
 | Write | Allowed on | Confirm UX | Forbidden |
 | --- | --- | --- | --- |
@@ -45,9 +46,11 @@ Hard rules:
 - **Context pack is not write authority.** Agents are display-only unless this matrix is satisfied in the Bluechip UI.
 - Hosted SObject MCP writes (if any) are out of scope until a Tooling/Metadata call exists.
 
-Wave 1 Salesforce writes: TraceFlag start/stop (and DebugLevel create if missing), confirm-gated. Local pin / Waybar style.css are not org writes. MCP has no write tools.
-
-Wave 2: `fls-propose` is a **proposal diff only**. FLS apply / Flow activate stay later and would reuse this matrix (sandbox-first; type `PROD` on prod; `--yes` banned on prod / unknown; never an MCP write).
+**On this tip:** TraceFlag start/stop (and DebugLevel create if missing) is the
+only org write, confirm-gated. `fls-propose` is a proposal diff only. Local pin /
+Waybar `style.css` are not org writes. MCP has no write tools. FLS apply / Flow
+activate would reuse this matrix (sandbox-first; type `PROD`; `--yes` banned on
+prod / unknown; never MCP).
 
 ## Pillars
 
@@ -85,95 +88,98 @@ Wave 2: `fls-propose` is a **proposal diff only**. FLS apply / Flow activate sta
 - Bluechip = seat, pulse, context pack (“this org, this Flow interview, these limits”)
 - **Writes only after explicit confirm** (deploy, trace flag, perm change, user freeze)
 
-## Bleeding-edge admin desktop (aspiration)
+## Revenue wedge (parked)
 
-The admin at a sharp tech company opens Omarchy and sees: which org is hot, which Flow is bleeding, which integration is chewing API, which sandbox is stale — then asks an agent to investigate with full context already attached. Lightning Setup becomes the occasional deep link, not the home screen.
+**ICP:** the Salesforce org is **already set up**. No getting-started widget, no
+empty-org wizard. The user already runs the org.
 
-## Revenue wedge (parked, 2026-09-14)
+**Paid attach:** OutboundSync data hygiene / data audit — OutboundSync product.
+Contract stub: [docs/HYGIENE-ATTACH.md](docs/HYGIENE-ATTACH.md). Bluechip may
+optional-deep-link; the local `COUNT(field)` probe is **not** that product.
 
-**ICP assumption:** the Salesforce org is **already set up**. No “getting started with Salesforce” widget, no Trailhead-style onboarding chrome, no empty-org wizard. The user is a System Admin (or equivalent) who already runs the org.
+**Not the SKU:** sandbox provisioning, Flow test infrastructure, and confirm-gated
+agents. No “What does yours get?” grade marketing in the MIT CLI.
 
-**Paid attach:** OutboundSync data hygiene / data audit — built as OutboundSync product. Contract stub: [docs/HYGIENE-ATTACH.md](docs/HYGIENE-ATTACH.md) (finding schema, no PII Id dump by default, sandbox findings must not remediate prod). Bluechip may optional-deep-link; the local `COUNT(field)` probe is **not** that product.
-
-**Not the SKU:** sandbox provisioning, Flow test infrastructure, and confirm-gated agents stay useful beachheads and dogfood; they are not the primary invoice line until proven.
-
-**Brand:** Bluechip remains the open Omarchy plugin name for now. Shipping furniture under an OutboundSync-facing label later is fine; do not confuse the MIT cockpit with the paid hygiene/router story. No “What does yours get?” grade marketing in the MIT CLI.
+**Brand:** Bluechip remains the open Omarchy plugin name. Do not confuse the MIT
+cockpit with the paid hygiene/router story.
 
 ## Explicit non-goals (for now)
 
 - Rebuilding Lightning Setup or Full DX IDE in QML
 - Competing with frontier agents as the AI itself
 - Full org data sync to the Linux filesystem
-- Seller-only CRM chrome as the headline (can layer later)
-- **Salesforce getting-started / empty-org onboarding** — assume the account exists; no Setup-for-beginners widget
+- Seller-only CRM chrome as the headline
+- Salesforce getting-started / empty-org onboarding
 - Owning Salesforce admin training or Trailhead replacement
 
 ## Park rule
 
-Harris authorized ship **2026-09-15**. `bluechip-v1` is the **active build tip**.
-`main` may still hold this parked vision until a later promote — do not silently
-rewrite `main`. No Connected App, no QML scaffold, no marketplace listing until
-a later wave requires them. Wave 1 rides `sf` + Tooling-via-`sf`.
+`bluechip-v1` is the **active build tip**. `main` may still hold this vision until
+a later promote — do not silently rewrite `main`. No Connected App, no QML
+scaffold, no marketplace listing until a later promote needs them.
 
-See [docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md). Agent contract on this tip:
-[AGENTS.md](AGENTS.md) (do not promote this branch to `main` from a docs PR).
+See [docs/SHIP-BACKLOG.md](docs/SHIP-BACKLOG.md). Agent contract:
+[AGENTS.md](AGENTS.md).
 
 ## Secrets / cache
 
 - State dir `~/.config/bluechip/` is `chmod 700` on first write; cache and credentials files are `0600`.
-- Never store or display a Consumer Secret in a settings UI (Enricherino rule). v1 has no Connected App and strips `accessToken` / `clientSecret` / `clientId` from snapshots and the context pack.
+- Never store or display a Consumer Secret in a settings UI. This tip has no Connected App and strips `accessToken` / `clientSecret` / `clientId` from snapshots and the context pack.
 - Hygiene config is code: object/field API names must match describe or a strict regex before interpolation into SOQL.
 
 ## Grounded in Harris × Brutus pain (2026-08 → 2026-09)
 
-Real friction already felt — not hypothetical:
+Real friction — why the hard rules exist:
 
-1. **Flow HTTP Callout / Apex-defined types** — IN_/OUT_2XX class soup, async-path-only callouts, Text pickers hiding Apex objects, loops just to read `mobilePhone`, Debug-before-Activate ritual. Hardest click-path Harris hit; wanted one step at a time, not dual-path docs.
-2. **Named Credential + External Credential auth** — Custom header formulas (`Authorization={! $Credential…}`), Generate Authorization Header vs Allow Formulas traps; ZoomInfo client-credentials and later OutboundSync Router creds.
-3. **Org split brain** — patterns built in `outboundsyncinc-dev-ed` then re-done on live team EE; easy to debug the wrong org.
-4. **Salesforce MCP ceiling** — Cursor hosted MCP = SObject CRUD/SOQL only; **no Metadata / custom fields**. Fields and much Setup stayed click-coaching. Flex Credits / Event Log metering became its own project.
-5. **Integration user FLS / Perm Set traps** — SavvyCal fields needed Read+Edit on Integration PS via API after Setup miss; “probe MCP/org before inventing menus” became house rule.
-6. **Boundary debugging** — Cloudflare Worker + Salesforce (wrangler tail, Illegal invocation, webhook mapping) while SF side was Named Cred / Connected App / PS.
-
-### What Omarchy would need to make *that* work easier
+1. **Flow HTTP Callout / Apex-defined types** — IN_/OUT_2XX class soup, Debug-before-Activate ritual.
+2. **Named Credential + External Credential auth** — header formulas vs Generate Authorization Header traps; secrets must never print.
+3. **Org split brain** — easy to debug Dev Ed thinking it is live EE.
+4. **Salesforce MCP ceiling** — hosted MCP = SObject CRUD/SOQL; no Metadata / custom fields.
+5. **Integration user FLS / Perm Set traps** — probe the org before inventing Setup menus.
+6. **Boundary debugging** — Worker + Salesforce while the SF side was Named Cred / Connected App / PS.
 
 | Capability | Why (from pain) | Access / tooling required |
 | --- | --- | --- |
-| **Org pin + hard sandbox/prod chrome** | Stop debugging Dev Ed thinking it’s EE | Multiple org auth (JWT or browser OAuth); bar badge impossible to miss |
-| **Flow fault console** | Interview faults + element errors without Setup archaeology | Tooling API: `FlowInterview`, Flow definition; View Flows / Manage Flow |
-| **Apex-defined type explorer** | See IN_/OUT_2XX shapes the Callout generated | Tooling/Apex Class describe; or retrieve Flow + related Apex |
-| **One-click Trace Flag + log tail** | Debug-before-Activate without Log page hell | Tooling `TraceFlag`, `ApexLog`; local log stream |
-| **Named Cred / Ext Cred inspector** | “What header formula is live?” without leaking secrets | Metadata/Tooling read of NC/EC; secret values never shown — formula + status only |
-| **Perm Set / FLS matrix for integration users** | Catch missing Edit before smoke test | SOQL + Tooling FieldPermissions / ObjectPermissions; compare PS to required field list |
-| **API + Flex Credit pulse** | Hosted MCP burn; callout volume | Event Monitoring (`SALESFORCE_HOSTED_MCP`), Limits API, optional Digital Wallet read; local ledger |
-| **Agent context pack** | Cursor/Grok get “this org, this Flow, last fault, this NC” without paste | Local Bluechip MCP over Tooling/Metadata/SOQL — **beyond** sObject-only hosted MCP |
-| **Confirm-gated writes** | Deploy TraceFlag, FLS fix, Flow activate | Metadata/Tooling write scopes; always confirm; sandbox-first |
+| **Org pin + hard sandbox/prod chrome** | Stop debugging the wrong org | Multiple org auth; bar badge impossible to miss |
+| **Flow fault console** | Interview faults without Setup archaeology | Tooling: `FlowInterview`, Flow definition |
+| **Apex-defined type explorer** | See IN_/OUT_2XX shapes | Tooling/Apex Class; or retrieve Flow + Apex |
+| **One-click Trace Flag + log tail** | Debug-before-Activate without Log page hell | Tooling `TraceFlag`, `ApexLog` |
+| **Named Cred / Ext Cred inspector** | Live header formula without leaking secrets | Metadata/Tooling read; secrets never shown |
+| **Perm Set / FLS matrix for integration users** | Catch missing Edit before smoke test | SOQL FieldPermissions / ObjectPermissions |
+| **API + Flex Credit pulse** | Who burned API since 9am | Event Monitoring, Limits API |
+| **Agent context pack** | This org, this Flow, last fault, this NC | Local Bluechip MCP over Tooling/Metadata/SOQL |
+| **Confirm-gated writes** | Deploy TraceFlag, FLS fix, Flow activate | Always confirm; sandbox-first |
 
 ### Access stack (required to be real)
 
-- **Connected App / External Client App** for Bluechip (separate from Cursor MCP): scopes for API, refresh; Admin-approved; Sysadmin-only to start
-- **User perms:** API Enabled, View Setup, Manage Flow / View All Data as needed, View Event Log Files (for MCP/Flex forensics), Modify Metadata if deploy features ship
-- **APIs (vision):** REST + **Tooling** + **Metadata** (hosted SObject MCP is not enough — that was the Brutus ceiling)
+- **Connected App / External Client App** when we leave local `sf`: API + refresh; Admin-approved; Sysadmin-only to start
+- **User perms:** API Enabled, View Setup, Manage Flow / View All Data as needed, View Event Log Files, Modify Metadata if deploy features ship
+- **APIs (vision):** REST + **Tooling** + **Metadata** (hosted SObject MCP is not enough)
 - **Local:** `sf` CLI optional for DX parity; Bluechip should not require VS Code
-- **Hard rule:** never store Consumer Secret in the plugin settings UI (Enricherino `~/.config` 0600 pattern)
+- **Hard rule:** never store Consumer Secret in the plugin settings UI
 
-### API honesty — vision vs this side branch
+## API honesty
 
 Do not say “Tooling” until a Tooling call exists.
 
-| Call | Vision | `bluechip-v1` Wave 1 |
+| Call | Vision | This tip |
 | --- | --- | --- |
 | `sf org display` | identity | **yes** |
 | `sf org list` / `sf org list limits` | limits pulse | **yes** (limits miss → unknown, not 0% green) |
-| `sf data query` (SOQL / REST) | Organization, FlowInterview, SetupAuditTrail, ApexLog, hygiene aggregates | **yes** (+ User for TraceFlag target) |
+| `sf data query` (SOQL / REST) | Organization, FlowInterview, SetupAuditTrail, ApexLog, hygiene aggregates | **yes** (+ User, PermissionSet*, ObjectPermissions, FieldPermissions, EventLogFile) |
 | `sf sobject describe` | probe-before-invent / FLS | **yes** (hygiene, before COUNT) |
 | Tooling `NamedCredential` / `ExternalCredential` | NC inspector | **yes** (safe fields + parameter *counts*; never secrets) |
 | Tooling `TraceFlag` / `DebugLevel` | debug-before-activate | **yes** (status read; start/stop confirm-gated CLI) |
-| Tooling Flow definition / FieldPermissions | Flow replay, FLS matrix | **not called** (Wave 2+) |
+| Tooling `FlowDefinition` | Flow replay | **yes** (clipboard/context; not full replay) |
+| SOQL FieldPermissions / ObjectPermissions | FLS matrix | **yes** (read + `fls-propose` diff) |
 | `sf apex get log` | log tail | **yes** (neutralized, capped) |
+| `sf api request rest` (EventLogFile `LogFile`) | limit offenders | **best-effort** — miss → unknown, not fake 0 |
 | Metadata `list` (NC/EC names) | fallback when Tooling misses | **yes** — names only |
 | Metadata retrieve/deploy | confirm-gated writes | **not called** |
 
 ### Agent leverage on this desk
 
-Agent does not replace Brutus/Harris judgment. It gets a **pre-attached incident bundle** (org id, Flow API name, interview Id, fault message, NC API name, recent ApexLog Ids) and proposes the next Setup click or a Metadata diff — human confirms. That is exactly the gap when MCP could SOQL but couldn’t see why a callout type was wrong.
+Agent does not replace Brutus/Harris judgment. It gets a **pre-attached incident
+bundle** (org id, Flow API name, interview Id, fault message, NC API name, recent
+ApexLog Ids) and proposes the next Setup click or a Metadata diff — human
+confirms.

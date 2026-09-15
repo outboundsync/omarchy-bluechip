@@ -39,8 +39,8 @@ You are editing this OS repo. Harris/Janus merge. Do not ship productization tha
 ### Salesforce I/O
 
 - Shell out to `sf` via **existing helpers** (`sf_try` / `capped_stdout`): byte-capped, timed out. Do not spawn unbounded `sf` or slurped jq over uncapped stdout.
-- **Never invent** a Connected App, QML panel, marketplace listing, or paid attach API **in this wave**.
-- Do not claim Tooling / Metadata retrieve/deploy unless a call already exists (README API table).
+- **Never invent** a Connected App, QML panel, marketplace listing, or paid attach API.
+- Do not claim Tooling / Metadata retrieve/deploy unless a call already exists ([VISION.md](VISION.md#api-honesty)).
 
 ### Secrets
 
@@ -52,7 +52,7 @@ You are editing this OS repo. Harris/Janus merge. Do not ship productization tha
 ### Writes
 
 - **TraceFlag** (`bluechip trace start|stop`) is the **only org write**. Confirm-gated CLI only. Not an MCP tool.
-- **`fls-propose` is diff-only.** FLS apply is not in this wave.
+- **`fls-propose` is diff-only.** FLS apply is not shipped.
 - **MCP stays display-only.** No pin write, no deploy, no TraceFlag create, no FLS apply.
 - Ban silent `--yes` on **prod** and **unknown**. Sandbox `--yes` is the only silent confirm.
 - Confirm matrix (do not restate the whole table): [VISION.md](VISION.md#confirm-before-write-matrix).
@@ -72,12 +72,12 @@ You are editing this OS repo. Harris/Janus merge. Do not ship productization tha
 | `bin/bluechip*` | CLI + helpers (`sf_try`, confirm, neutralize) |
 | `mcp/server.py` | Display-only stdio MCP — wraps `bin/bluechip`, no forked scoring |
 | `waybar/` | Chip JSON + CSS |
-| `scripts/test-hygiene.sh` + `tests/` | H1–H10, Wave 1/2, UX, hardening |
+| `scripts/test-hygiene.sh` + `tests/` | H1–H10 and CLI/MCP suites |
 | `docs/UX-PASS.md` | Harness product SoT (chip, verbs, incident, watch) |
 | `docs/HYGIENE-ATTACH.md` | Paid-attach stub — not an implementation |
 | `docs/ADVERSARIAL-REVIEW-2026-09-15.md` | Pointer: canonical review is on `main` |
 
-### Do not invent (this wave)
+### Do not invent
 
 Connected App · QML · marketplace · paid attach productization · Clay canvas · OpenRouter sprawl · letter grades as org truth · fake 0% / 100 on a miss · “agent wrote the org” from a pack.
 
