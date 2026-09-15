@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="934" height="492" viewBox="0 0 934 492" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="13.5">
+<rect width="934" height="492" rx="12" fill="#1e1e2e"/>
+<circle cx="22" cy="26" r="6" fill="#f38ba8"/>
+<circle cx="42" cy="26" r="6" fill="#f9e2af"/>
+<circle cx="62" cy="26" r="6" fill="#a6e3a1"/>
+<text x="467.0" y="30" fill="#6c7086" text-anchor="middle" font-size="12">bluechip hygiene — acme-prod</text>
+<text x="22.0" y="71" fill="#cdd6f4" font-weight="400" xml:space="preserve">  </text>
+<text x="38.8" y="71" fill="#cdd6f4" font-weight="700" xml:space="preserve">Org Data Health</text>
+<text x="164.8" y="71" fill="#cdd6f4" font-weight="400" xml:space="preserve">   </text>
+<text x="190.0" y="71" fill="#a6e3a1" font-weight="700" xml:space="preserve">B</text>
+<text x="198.4" y="71" fill="#cdd6f4" font-weight="400" xml:space="preserve"> </text>
+<text x="206.8" y="71" fill="#9399b2" font-weight="400" xml:space="preserve">(81/100)</text>
+<text x="274.0" y="71" fill="#cdd6f4" font-weight="400" xml:space="preserve">   </text>
+<text x="299.2" y="71" fill="#6c7086" font-weight="400" xml:space="preserve">acme-prod</text>
+<text x="22.0" y="109" fill="#cdd6f4" font-weight="400" xml:space="preserve">   Leads                </text>
+<text x="223.6" y="109" fill="#f9e2af" font-weight="400" xml:space="preserve">■■■■■■■■■</text>
+<text x="299.2" y="109" fill="#6c7086" font-weight="400" xml:space="preserve">□□□</text>
+<text x="324.4" y="109" fill="#cdd6f4" font-weight="400" xml:space="preserve"> </text>
+<text x="332.8" y="109" fill="#a6e3a1" font-weight="700" xml:space="preserve"> 80</text>
+<text x="358.0" y="109" fill="#cdd6f4" font-weight="400" xml:space="preserve">   </text>
+<text x="383.2" y="109" fill="#9399b2" font-weight="400" xml:space="preserve">(12204 recs)</text>
+<text x="22.0" y="128" fill="#cdd6f4" font-weight="400" xml:space="preserve">      </text>
+<text x="72.4" y="128" fill="#9399b2" font-weight="400" xml:space="preserve">completeness 64 · freshness 62 · owners 97 · dupes 97</text>
+<text x="22.0" y="147" fill="#cdd6f4" font-weight="400" xml:space="preserve">   Contacts             </text>
+<text x="223.6" y="147" fill="#f9e2af" font-weight="400" xml:space="preserve">■■■■■■■■■■</text>
+<text x="307.6" y="147" fill="#6c7086" font-weight="400" xml:space="preserve">□□</text>
+<text x="324.4" y="147" fill="#cdd6f4" font-weight="400" xml:space="preserve"> </text>
+<text x="332.8" y="147" fill="#a6e3a1" font-weight="700" xml:space="preserve"> 85</text>
+<text x="358.0" y="147" fill="#cdd6f4" font-weight="400" xml:space="preserve">   </text>
+<text x="383.2" y="147" fill="#9399b2" font-weight="400" xml:space="preserve">(48110 recs)</text>
+<text x="22.0" y="166" fill="#cdd6f4" font-weight="400" xml:space="preserve">      </text>
+<text x="72.4" y="166" fill="#9399b2" font-weight="400" xml:space="preserve">completeness 74 · freshness 68 · owners 98 · dupes 98</text>
+<text x="22.0" y="185" fill="#cdd6f4" font-weight="400" xml:space="preserve">   Accounts             </text>
+<text x="223.6" y="185" fill="#f9e2af" font-weight="400" xml:space="preserve">■■■■■■■■■</text>
+<text x="299.2" y="185" fill="#6c7086" font-weight="400" xml:space="preserve">□□□</text>
+<text x="324.4" y="185" fill="#cdd6f4" font-weight="400" xml:space="preserve"> </text>
+<text x="332.8" y="185" fill="#a6e3a1" font-weight="700" xml:space="preserve"> 80</text>
+<text x="358.0" y="185" fill="#cdd6f4" font-weight="400" xml:space="preserve">   </text>
+<text x="383.2" y="185" fill="#9399b2" font-weight="400" xml:space="preserve">(15980 recs)</text>
+<text x="22.0" y="204" fill="#cdd6f4" font-weight="400" xml:space="preserve">      </text>
+<text x="72.4" y="204" fill="#9399b2" font-weight="400" xml:space="preserve">completeness 60 · freshness 62 · owners 99 · dupes 98</text>
+<text x="22.0" y="223" fill="#cdd6f4" font-weight="400" xml:space="preserve">   Opportunities        </text>
+<text x="223.6" y="223" fill="#f9e2af" font-weight="400" xml:space="preserve">■■■■■■■■■</text>
+<text x="299.2" y="223" fill="#6c7086" font-weight="400" xml:space="preserve">□□□</text>
+<text x="324.4" y="223" fill="#cdd6f4" font-weight="400" xml:space="preserve"> </text>
+<text x="332.8" y="223" fill="#a6e3a1" font-weight="700" xml:space="preserve"> 80</text>
+<text x="358.0" y="223" fill="#cdd6f4" font-weight="400" xml:space="preserve">   </text>
+<text x="383.2" y="223" fill="#9399b2" font-weight="400" xml:space="preserve">(3120 recs)</text>
+<text x="22.0" y="242" fill="#cdd6f4" font-weight="400" xml:space="preserve">      </text>
+<text x="72.4" y="242" fill="#9399b2" font-weight="400" xml:space="preserve">completeness 70 · freshness 71 · owners 99 · dupes 100 · pipeline 60</text>
+<text x="22.0" y="280" fill="#cdd6f4" font-weight="400" xml:space="preserve">  </text>
+<text x="38.8" y="280" fill="#cdd6f4" font-weight="700" xml:space="preserve">Biggest wins</text>
+<text x="22.0" y="299" fill="#cdd6f4" font-weight="400" xml:space="preserve">   • 18110 Contacts missing Phone</text>
+<text x="22.0" y="318" fill="#cdd6f4" font-weight="400" xml:space="preserve">   • 15110 Contacts missing Title</text>
+<text x="22.0" y="337" fill="#cdd6f4" font-weight="400" xml:space="preserve">   • 15000 Contacts stale (no activity 90d+)</text>
+<text x="22.0" y="356" fill="#cdd6f4" font-weight="400" xml:space="preserve">   • 8004 Leads missing Industry</text>
+<text x="22.0" y="375" fill="#cdd6f4" font-weight="400" xml:space="preserve">   • 7980 Accounts missing Industry</text>
+<text x="22.0" y="394" fill="#cdd6f4" font-weight="400" xml:space="preserve">   • 6980 Accounts missing Website</text>
+<text x="22.0" y="432" fill="#cdd6f4" font-weight="400" xml:space="preserve">  </text>
+<text x="38.8" y="432" fill="#cdd6f4" font-weight="700" xml:space="preserve">Remediate at scale →</text>
+<text x="206.8" y="432" fill="#cdd6f4" font-weight="400" xml:space="preserve"> </text>
+<text x="215.2" y="432" fill="#94e2d5" font-weight="700" xml:space="preserve">OutboundSync</text>
+<text x="316.0" y="432" fill="#cdd6f4" font-weight="400" xml:space="preserve">  </text>
+<text x="332.8" y="432" fill="#9399b2" font-weight="400" xml:space="preserve">https://outboundsync.com</text>
+<text x="22.0" y="451" fill="#cdd6f4" font-weight="400" xml:space="preserve">  </text>
+<text x="38.8" y="451" fill="#9399b2" font-weight="400" xml:space="preserve">Exact-match dupes &amp; fill-rates shown here; fuzzy / cross-object dedupe &amp; enrichment run in OutboundSync.</text>
+</svg>

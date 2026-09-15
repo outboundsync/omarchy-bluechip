@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+# Stub Salesforce CLI for hygiene acceptance tests. Reads BLUECHIP_FIXTURE/map.json.
+set -o pipefail
+FIXTURE="${BLUECHIP_FIXTURE:?BLUECHIP_FIXTURE must point at a case directory}"
+MAP="$FIXTURE/map.json"
+[[ -f "$MAP" ]] || { echo '{"status":1,"name":"TRANSIENT","message":"stub: no map.json"}'; exit 1; }
+
+sobject=""
+query=""
+org_flag=""
+use_tooling=0
+metadata_type=""
+record_id=""
+log_id=""
+api_url=""
+args=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --json) shift ;;
+    --use-tooling-api|-t) use_tooling=1; shift ;;
+    --metadata-type|-m) metadata_type="$2"; shift 2 ;;
+    --metadata-type=*) metadata_type="${1#*=}"; shift ;;
+    --record-id) record_id="$2"; shift 2 ;;
+    --record-id=*) record_id="${1#*=}"; shift ;;
+    --log-id) log_id="$2"; shift 2 ;;
+    --log-id=*) log_id="${1#*=}"; shift ;;
+    --values) shift 2 ;;
+    --values=*) shift ;;
+    --sobject|-s) sobject="$2"; shift 2 ;;
+    --sobject=*) sobject="${1#*=}"; shift ;;
+    -q|--query) query="$2"; shift 2 ;;
+    --query=*) query="${1#*=}"; shift ;;
+    -o|--org|--target-org) org_flag="$2"; shift 2 ;;
+    --org=*|--target-org=*) org_flag="${1#*=}"; shift ;;
+    --method) shift 2 ;;
+    --method=*) shift ;;
+    --url) api_url="$2"; shift 2 ;;
+    --url=*) api_url="${1#*=}"; shift ;;
+    *) args+=("$1"); shift ;;
+  esac
+done
+
+_org_suffix() {
+  [[ -n "$org_flag" ]] && printf '.%s' "$org_flag"
+  return 0
+}
+
+key=""
+if [[ -n "${BLUECHIP_SF_TRACE:-}" ]]; then
+  printf '%s\n' "${args[*]}" >> "$BLUECHIP_SF_TRACE"
+fi
+if [[ "${args[0]}" == "org" && "${args[1]}" == "display" ]]; then
+  key="org.display$(_org_suffix)"
+  rel="$(jq -r --arg k "$key" '.[$k] // empty' "$MAP")"
+  [[ -z "$rel" && -n "$org_flag" ]] && key="org.display"
+elif [[ "${args[0]}" == "org" && "${args[1]}" == "list" && "${args[2]}" == "limits" ]]; then
+  key="org.list.limits$(_org_suffix)"
+  rel="$(jq -r --arg k "$key" '.[$k] // empty' "$MAP")"
+  [[ -z "$rel" && -n "$org_flag" ]] && key="org.list.limits"
+elif [[ "${args[0]}" == "org" && "${args[1]}" == "list" && "${args[2]}" == "metadata" ]]; then
+  key="org.list.metadata.${metadata_type:-unknown}"
+elif [[ "${args[0]}" == "org" && "${args[1]}" == "list" ]]; then
+  key="org.list"
+elif [[ "${args[0]}" == "sobject" && "${args[1]}" == "describe" ]]; then
+  key="sobject.describe.${sobject}"
+elif [[ "${args[0]}" == "data" && "${args[1]}" == "create" ]]; then
+  key="create.${sobject}"
+  [[ $use_tooling -eq 1 ]] && key="tooling.create.${sobject}"
+elif [[ "${args[0]}" == "data" && "${args[1]}" == "delete" ]]; then
+  key="delete.${sobject}"
+  [[ $use_tooling -eq 1 ]] && key="tooling.delete.${sobject}"
+elif [[ "${args[0]}" == "apex" && "${args[1]}" == "get" ]]; then
+  key="apex.get.log"
+elif [[ "${args[0]}" == "api" ]]; then
+  key="api.request"
+  blob="${api_url} ${args[*]}"
+  if [[ "$blob" == *EventLogFile* ]]; then
+    key="api.request.EventLogFile"
+  fi
+elif [[ "${args[0]}" == "data" && "${args[1]}" == "query" ]]; then
+  obj="$(sed -n 's/.*FROM \([A-Za-z][A-Za-z0-9_]*\).*/\1/p' <<<"$query" | head -1)"
+  if [[ $use_tooling -eq 1 ]]; then
+    kind="list"
+    [[ "$query" == *"COUNT("* && "$query" == *"GROUP BY"* ]] && kind="group"
+    [[ "$query" == *"COUNT("* && "$query" != *"GROUP BY"* ]] && kind="count"
+    key="tooling.query.${obj}.${kind}"
+    rel="$(jq -r --arg k "$key" '.[$k] // empty' "$MAP")"
+    if [[ -z "$rel" ]]; then
+      key="tooling.query.${obj}"
+    fi
+  else
+    kind="other"
+    if [[ "$query" == *"FROM Organization"* ]]; then
+      kind="row$(_org_suffix)"
+      obj="Organization"
+      rel="$(jq -r --arg k "query.${obj}.${kind}" '.[$k] // empty' "$MAP")"
+      [[ -z "$rel" && -n "$org_flag" ]] && kind="row"
+    elif [[ "$query" == *"FROM FlowInterview"* && "$query" == *"COUNT("* ]]; then
+      kind="count"
+    elif [[ "$query" == *"GROUP BY"* ]]; then kind="dupes"
+    elif [[ "$query" == *"LastActivityDate"* ]]; then kind="freshness"
+    elif [[ "$query" == *"Owner.IsActive"* ]]; then kind="ownership"
+    elif [[ "$query" == *"CloseDate"* ]]; then kind="pipeline"
+    elif [[ "$query" == *"COUNT("* ]]; then kind="completeness"
+    fi
+    key="query.${obj}.${kind}"
+  fi
+else
+  key="unknown.${args[0]}.${args[1]}"
+fi
+
+rel="$(jq -r --arg k "$key" '.[$k] // empty' "$MAP")"
+if [[ -z "$rel" ]]; then
+  jq -nc --arg k "$key" '{status:1,name:"INVALID_FIELD",message:("stub: no fixture for "+$k)}'
+  exit 1
+fi
+
+if [[ "$rel" == error:* ]]; then
+  rest="${rel#error:}"
+  name="${rest%%:*}"
+  msg="${rest#*:}"
+  jq -nc --arg n "$name" --arg m "$msg" '{status:1,name:$n,message:$m,exitCode:1}'
+  exit 1
+fi
+
+path="$FIXTURE/$rel"
+if [[ ! -f "$path" ]]; then
+  jq -nc --arg p "$rel" '{status:1,name:"TRANSIENT",message:("stub: missing file "+$p)}'
+  exit 1
+fi
+cat "$path"
+st="$(jq -r '.status // 0' "$path" 2>/dev/null || echo 1)"
+[[ "$st" == "0" ]]

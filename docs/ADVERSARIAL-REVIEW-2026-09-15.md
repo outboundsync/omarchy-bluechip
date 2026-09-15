@@ -1,5 +1,11 @@
 # Adversarial review — Bluechip (2026-09-15)
 
+> **Status (post-promote):** `main` now ships the working cockpit (`bin/bluechip`, MCP,
+> H1–H10, confirm matrix, three-valued `sandboxState`). This review is **historical**
+> — scored parked `main` and an older `bluechip-v1` SHA. **Do not treat the verdict
+> below as a current FAIL of tip.** Living contract: [AGENTS.md](../AGENTS.md).
+
+
 **Reviewer:** Janus (OS eng)  
 **Subject:** parked vision + shape on `main`, plus the unmerged `origin/bluechip-v1` experiment  
 **Repo:** `outboundsync/omarchy-bluechip`  

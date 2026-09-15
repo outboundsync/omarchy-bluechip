@@ -1,0 +1,64 @@
+/* Bluechip — Waybar chip styling.
+ *
+ * Append to ~/.config/waybar/style.css (or @import it). It inherits the bar's
+ * font from Omarchy's active theme; only colors/spacing are set here so the
+ * PROD/SANDBOX signal is unmistakable in any theme.
+ *
+ * Classes emitted by `bluechip bar`:
+ *   .prod / .sandbox / .unknown — environment (UNKNOWN is muted, never fake-green)
+ *   .ok / .warn / .crit / .unknown — worst-signal severity
+ *   .pulse — brief flash after a real `bluechip watch` transition
+ */
+
+#custom-bluechip {
+  padding: 0 10px;
+  margin: 0 2px;
+  border-radius: 8px;
+}
+
+/* PROD: quiet by default — you should barely notice it until a limit bites. */
+#custom-bluechip.prod {
+  color: #cdd6f4;
+}
+
+/* SANDBOX: loud and impossible to mistake for prod. */
+#custom-bluechip.sandbox {
+  background-color: #f9e2af;   /* amber */
+  color: #1e1e2e;
+  font-weight: bold;
+}
+
+/* Severity — amber then red as utilization climbs. */
+#custom-bluechip.prod.warn { color: #f9e2af; }
+#custom-bluechip.prod.crit {
+  background-color: #f38ba8;   /* red */
+  color: #1e1e2e;
+  font-weight: bold;
+}
+
+/* In a sandbox the amber background stays; escalate text/box on crit. */
+#custom-bluechip.sandbox.crit {
+  background-color: #eba0ac;
+  color: #1e1e2e;
+}
+
+/* UNKNOWN: muted — never a healthy green fill. */
+#custom-bluechip.unknown {
+  color: #6c7086;
+  background-color: transparent;
+  font-weight: normal;
+}
+
+/* Healthy peak: inherit identity chrome. Do not paint a fake-green pill. */
+#custom-bluechip.ok {
+  /* identity classes (.prod / .sandbox) already set color */
+}
+
+/* Pulse after a real watch transition (limit cross, new Flow fault). */
+@keyframes bluechip-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+#custom-bluechip.pulse {
+  animation: bluechip-pulse 1.2s ease-in-out 3;
+}

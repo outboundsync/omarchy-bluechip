@@ -1,0 +1,7 @@
+{
+  "org.display": "org-display-prod.json",
+  "org.display.sbx": "org-display-sbx.json",
+  "org.list.limits": "limits.json",
+  "query.Organization.row": "org-row-prod.json",
+  "query.Organization.row.sbx": "org-row-sbx.json"
+}

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Hyprland / hotkey helper: clipboard → bluechip context pack.
+# Does not require a desktop binding — bind it only if you want a key.
+# Example (hyprland.conf):
+#   bind = SUPER SHIFT, V, exec, bluechip-clipboard
+set -o pipefail
+
+_self="${BASH_SOURCE[0]}"
+if [[ -L "$_self" ]]; then
+  _self="$(readlink -f "$_self" 2>/dev/null || readlink "$_self" || echo "$_self")"
+fi
+# shellcheck source=bluechip-lib.inc
+source "$(dirname "$_self")/bluechip-lib.inc"
+
+bluechip=bluechip
+command -v "$bluechip" >/dev/null 2>&1 || bluechip="$(dirname "$_self")/bluechip"
+"$bluechip" clipboard --copy "$@"
+ec=$?
+# Toast only on success — unrecognized selection stays quiet (UX-PASS).
+# Argv array + -- ; title/body are literals (never clipboard contents).
+if [[ $ec -eq 0 ]]; then
+  notify_send_safe "Copy pack" "Context pack copied." || true
+fi
+exit "$ec"

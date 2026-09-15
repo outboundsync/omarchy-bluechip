@@ -1,0 +1,1035 @@
+#!/usr/bin/env bash
+# bluechip — Salesforce admin cockpit for Omarchy.
+# Read-only. Rides your existing `sf` CLI login. No Connected App, no stored secrets.
+# Unofficial · works with Salesforce® · not affiliated with Salesforce, Inc.
+#
+# Usage: bluechip <command> [options]
+#   Primary: doctor, bar, pin, orgs, limits, flows, incident, context, watch, help
+#   Advanced: bluechip help --all
+#   UX pass: docs/UX-PASS.md  (pin → pulse → probe → pack → agent → confirm write)
+#
+# Global options:
+#   -o, --org <alias>   Act on this org for one command (overrides the pin)
+#   --refresh           Ignore cache and re-query Salesforce
+#   --json              Machine-readable JSON on supported commands
+#   --yes               Confirm writes on sandbox only (banned on prod)
+#   --no-color          Plain output
+set -o pipefail
+
+BLUECHIP_VERSION="1.3.0"
+SF_BIN="${BLUECHIP_SF:-sf}"
+DUPE_GROUP_CAP="${BLUECHIP_DUPE_CAP:-200}"
+SNAPSHOT_ERROR=""
+
+# ---------------------------------------------------------------------------
+# Paths / config
+# ---------------------------------------------------------------------------
+CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+STATE_DIR="$CONFIG_HOME/bluechip"
+CACHE_DIR="$STATE_DIR/cache"
+STATE_FILE="$STATE_DIR/state.json"
+SNAPSHOT_FILE="$CACHE_DIR/snapshot.json"
+WATCH_STATE="$CACHE_DIR/watch.json"
+HYGIENE_CACHE="$CACHE_DIR/hygiene.json"
+HYGIENE_ERROR_FILE="$CACHE_DIR/hygiene.error.json"
+
+# Cache freshness for `bar` / `doctor` so Waybar never blocks on a slow API call.
+CACHE_TTL="${BLUECHIP_CACHE_TTL:-120}"
+
+# Utilization thresholds (percent used).
+WARN_PCT="${BLUECHIP_WARN_PCT:-75}"
+CRIT_PCT="${BLUECHIP_CRIT_PCT:-90}"
+
+# Limits we treat as "headline" for the bar / doctor, in priority order.
+HEADLINE_LIMITS=(
+  "DailyApiRequests"
+  "DataStorageMB"
+  "FileStorageMB"
+  "DailyAsyncApexExecutions"
+  "DailyBulkApiBatches"
+  "HourlyODataCallout"
+  "DailyStandardVolumePlatformEvents"
+)
+
+# ---------------------------------------------------------------------------
+# Colors
+# ---------------------------------------------------------------------------
+USE_COLOR=1
+if [[ ! -t 1 || -n "${NO_COLOR:-}" ]]; then USE_COLOR=0; fi
+# FORCE_COLOR overrides tty detection (useful for piping to less -R or a renderer).
+if [[ -n "${FORCE_COLOR:-}" && -z "${NO_COLOR:-}" ]]; then USE_COLOR=1; fi
+c() { # c <code>  -> ansi if color enabled
+  [[ $USE_COLOR -eq 1 ]] || return 0
+  printf '\033[%sm' "$1"
+}
+RESET=$(c 0); BOLD=$(c 1); DIM=$(c 2)
+RED=$(c 31); GREEN=$(c 32); YELLOW=$(c 33); BLUE=$(c 34); CYAN=$(c 36); GREY=$(c 90)
+
+die() { printf '%s\n' "bluechip: $*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null 2>&1 || die "missing dependency: $1"; }
+
+# Neutralize + spawn/IO helpers (bluechip-lib.inc). Sourced before sf_try / write_secure.
+_bluechip_self="${BASH_SOURCE[0]}"
+if [[ -L "$_bluechip_self" ]]; then
+  _bluechip_self="$(readlink -f "$_bluechip_self" 2>/dev/null || readlink "$_bluechip_self" || echo "$_bluechip_self")"
+fi
+# shellcheck source=bluechip-lib.inc
+source "$(dirname "$_bluechip_self")/bluechip-lib.inc"
+
+# Resolve sf on the caller PATH (nvm / ~/.local) to an absolute path so a
+# later cwd `sf` impostor cannot win. Do not pin PATH globally — node-based
+# `sf` still needs nvm. notify-send / xdg-open use pinned_cmd instead.
+SF_BIN="$(bluechip_resolve_sf_bin "$SF_BIN")"
+
+# 700 on the state dir, 600 on cache/credentials — first write, every write.
+# Refuse to mkdir through a symlink. Exclusive create (mktemp = O_EXCL) + 0600.
+ensure_state_dir() {
+  local old_umask
+  old_umask="$(umask)"
+  umask 077
+  mkdir -p "$STATE_DIR" "$CACHE_DIR"
+  umask "$old_umask"
+  if [[ -L "$STATE_DIR" || -L "$CACHE_DIR" ]]; then
+    die "refusing symlink state/cache dir"
+  fi
+  chmod 700 "$STATE_DIR" 2>/dev/null || true
+  chmod 700 "$CACHE_DIR" 2>/dev/null || true
+}
+
+write_secure() { # <path>  (reads stdin)
+  local path="$1" dir tmp
+  ensure_state_dir
+  dir="$(dirname "$path")"
+  if [[ -L "$path" || -L "$dir" ]]; then
+    printf 'bluechip: refusing to write through symlink: %s\n' "$path" >&2
+    return 1
+  fi
+  tmp="$(mktemp "${path}.XXXXXX")" || return 1
+  chmod 600 "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
+  cat > "$tmp" || { rm -f "$tmp"; return 1; }
+  mv -f "$tmp" "$path"
+  chmod 600 "$path" 2>/dev/null || true
+}
+
+# Salesforce API names only — never interpolate unsanitized config into SOQL.
+soql_api_name_ok() { [[ "$1" =~ ^[A-Za-z][A-Za-z0-9_]{0,79}$ ]]; }
+soql_field_ref_ok() { [[ "$1" =~ ^[A-Za-z][A-Za-z0-9_]{0,79}(\.[A-Za-z][A-Za-z0-9_]{0,79})?$ ]]; }
+soql_filter_ok() {
+  local s="$1"
+  local re='^[A-Za-z0-9_.=<>!():[:space:]-]+$'
+  [[ -z "$s" ]] && return 0
+  [[ "$s" == *\'* || "$s" == *\"* || "$s" == *\\* || "$s" == *';'* ]] && return 1
+  [[ "$s" == *'--'* || "$s" == *'/*'* ]] && return 1
+  [[ "$s" =~ $re ]]
+}
+
+# Closed reason enum for probes. Raw Salesforce text is not a reason.
+classify_sf_error() {
+  local blob="${1:-}" name msg mix
+  if [[ -z "$blob" ]]; then echo transient; return; fi
+  name="$(jq -r '.name // .errorCode // .code // empty' <<<"$blob" 2>/dev/null || true)"
+  msg="$(jq -r '.message // empty' <<<"$blob" 2>/dev/null || true)"
+  mix="$(printf '%s %s' "$name" "$msg" | tr '[:upper:]' '[:lower:]')"
+  case "$name" in
+    INVALID_TYPE|INVALID_TYPE_ON_FIELD_IN_ENTITY) echo object_forbidden; return ;;
+    INVALID_FIELD) echo invalid_field; return ;;
+    INSUFFICIENT_ACCESS|INSUFFICIENT_ACCESS_OR_READONLY|CANNOT_QUERY) echo object_forbidden; return ;;
+  esac
+  if [[ "$mix" == *timeout* || "$name" == *TIMEOUT* ]]; then echo timeout; return; fi
+  if [[ "$mix" == *authenticat* || "$mix" == *'not logged'* || "$mix" == *'no default org'* \
+     || "$name" == "NoDefaultOrgFound" || "$name" == "NamedOrgNotFound" || "$name" == "AuthInfoError" ]]; then
+    echo unauthenticated; return
+  fi
+  if [[ "$mix" == *502* || "$mix" == *503* || "$mix" == *econnreset* || "$mix" == *enotfound* \
+     || "$mix" == *network* || "$mix" == *econnrefused* || "$name" == "TRANSIENT" \
+     || "$name" == "ENOTFOUND" || "$name" == "ECONNRESET" ]]; then
+    echo transient; return
+  fi
+  if [[ "$mix" == *insufficient* || "$mix" == *'not queryable'* || "$mix" == *'sobject type'* \
+     || "$mix" == *'invalid type'* || "$mix" == *'no such entity'* ]]; then
+    echo object_forbidden; return
+  fi
+  if [[ "$mix" == *'no such column'* || "$mix" == *'invalid field'* ]]; then echo invalid_field; return; fi
+  if [[ "$mix" == *'unknown command'* || "$mix" == *'unexpected argument'* \
+     || "$mix" == *'is not a sf command'* || "$mix" == *'nonexistent flag'* \
+     || "$name" == "UNSUPPORTED" ]]; then
+    echo unsupported; return
+  fi
+  echo transient
+}
+
+# ---------------------------------------------------------------------------
+# Arg parsing (global options can appear anywhere)
+# ---------------------------------------------------------------------------
+ORG_OVERRIDE=""
+FORCE_REFRESH=0
+WANT_JSON=0
+WANT_YES=0
+POSITIONAL=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o|--org)     ORG_OVERRIDE="${2:-}"; shift 2 ;;
+    --org=*)      ORG_OVERRIDE="${1#*=}"; shift ;;
+    --refresh)    FORCE_REFRESH=1; shift ;;
+    --json)       WANT_JSON=1; shift ;;
+    --yes)        WANT_YES=1; shift ;;
+    --no-color)   USE_COLOR=0; RESET=""; BOLD=""; DIM=""; RED=""; GREEN=""; YELLOW=""; BLUE=""; CYAN=""; GREY=""; shift ;;
+    --)           shift; while [[ $# -gt 0 ]]; do POSITIONAL+=("$1"); shift; done ;;
+    *)            POSITIONAL+=("$1"); shift ;;
+  esac
+done
+if [[ ${#POSITIONAL[@]} -gt 0 ]]; then set -- "${POSITIONAL[@]}"; else set --; fi
+CMD="${1:-help}"; [[ $# -gt 0 ]] && shift || true
+
+# ---------------------------------------------------------------------------
+# sf plumbing
+# ---------------------------------------------------------------------------
+have_sf() {
+  if [[ "$SF_BIN" == */* ]]; then
+    [[ -x "$SF_BIN" ]]
+  else
+    command -v "$SF_BIN" >/dev/null 2>&1
+  fi
+}
+
+pinned_org() {
+  [[ -f "$STATE_FILE" ]] || return 0
+  jq -r '.pinnedOrg // empty' "$STATE_FILE" 2>/dev/null
+}
+
+# Which org flag to pass to sf (override > pin > sf default).
+# Sets the global array OFLAG to (-o alias) or () — safe to expand as "${OFLAG[@]}".
+OFLAG=()
+set_oflag() {
+  OFLAG=()
+  local target="$ORG_OVERRIDE"
+  [[ -z "$target" ]] && target="$(pinned_org)"
+  [[ -n "$target" ]] && OFLAG=(-o "$target")
+}
+
+# Run `$SF_BIN <args> --json`. Echo the full CLI JSON. Return 0 iff .status==0.
+# stdout is byte-capped; stderr is discarded (never persisted). Timeout → TIMEOUT.
+sf_try() {
+  local out="" cap_ec=0
+  out="$(capped_stdout "$SF_MAX_BYTES" "$SF_BIN" "$@" --json)" || cap_ec=$?
+  case "$cap_ec" in
+    2)
+      printf '%s\n' '{"status":1,"name":"TRANSIENT","message":"sf output exceeded cap"}'
+      return 1
+      ;;
+    124)
+      printf '%s\n' '{"status":1,"name":"TIMEOUT","message":"sf timed out"}'
+      return 1
+      ;;
+  esac
+  if [[ -z "$out" ]]; then
+    printf '%s\n' '{"status":1,"name":"TRANSIENT","message":"sf failed with no JSON"}'
+    return 1
+  fi
+  if ! jq -e . >/dev/null 2>&1 <<<"$out"; then
+    printf '%s\n' '{"status":1,"name":"TRANSIENT","message":"sf failed with no JSON"}'
+    return 1
+  fi
+  printf '%s\n' "$out"
+  local s
+  s="$(jq -r '.status // 0' <<<"$out" 2>/dev/null)"
+  [[ "$s" == "0" ]]
+}
+
+# Run `sf <args> --json`; on success echo `.result`, else return non-zero.
+sf_json() {
+  local raw
+  raw="$(sf_try "$@")" || return 1
+  jq -c '.result' <<<"$raw"
+}
+
+# ---------------------------------------------------------------------------
+# Snapshot: org identity + Organization row + limits, cached to one blob.
+# ---------------------------------------------------------------------------
+snapshot_is_fresh() {
+  [[ -f "$SNAPSHOT_FILE" ]] || return 1
+  local age now mtime
+  now=$(date +%s)
+  # Linux `stat -f` is --file-system (succeeds with garbage). Prefer -c; macOS falls back to -f %m.
+  mtime=$(stat -c %Y "$SNAPSHOT_FILE" 2>/dev/null || stat -f %m "$SNAPSHOT_FILE" 2>/dev/null || echo 0)
+  age=$(( now - mtime ))
+  [[ $age -lt $CACHE_TTL ]]
+}
+
+build_snapshot() {
+  SNAPSHOT_ERROR=""
+  have_sf || { SNAPSHOT_ERROR="sf_missing"; return 2; }
+  set_oflag
+  local display_raw display org limits limits_av="ok"
+  display_raw="$(sf_try org display "${OFLAG[@]}")" || {
+    SNAPSHOT_ERROR="$(classify_sf_error "$display_raw")"
+    [[ "$SNAPSHOT_ERROR" == "transient" || "$SNAPSHOT_ERROR" == "timeout" ]] \
+      || SNAPSHOT_ERROR="unauthenticated"
+    return 3
+  }
+  display="$(jq -c '.result' <<<"$display_raw")"
+  # Organization row tells us sandbox vs prod, pod, edition — the stuff that matters.
+  org="$(sf_json data query "${OFLAG[@]}" -q \
+    "SELECT Id, Name, IsSandbox, OrganizationType, InstanceName, TrialExpirationDate FROM Organization LIMIT 1")" \
+    || org='{"records":[]}'
+  limits="$(sf_json org list limits "${OFLAG[@]}")" || { limits='[]'; limits_av="unknown"; }
+
+  local faults_raw faults_av="unknown" faults_n="" faults_why=""
+  faults_raw="$(sf_try data query "${OFLAG[@]}" -q \
+    "SELECT COUNT(Id) c FROM FlowInterview WHERE InterviewStatus IN ('Error','Paused')")" \
+    && {
+      faults_n="$(jq -r '.result.records[0].c // empty' <<<"$faults_raw" 2>/dev/null || true)"
+      if [[ "$faults_n" =~ ^[0-9]+$ ]]; then faults_av="ok"; else faults_n=""; faults_why="malformed"; fi
+    } \
+    || { faults_why="$(classify_sf_error "$faults_raw")"; faults_n=""; }
+
+  # Never persist the access token that `sf org display` includes. Never print Consumer Secret.
+  jq -n \
+    --argjson display "$display" \
+    --argjson org "$org" \
+    --argjson limits "$limits" \
+    --arg limitsAv "$limits_av" \
+    --arg faultsAv "$faults_av" \
+    --arg faultsN "$faults_n" \
+    --arg faultsWhy "$faults_why" \
+    --arg ts "$(date +%s)" \
+    '{
+       ts: ($ts|tonumber),
+       org: ($org.records[0] // {}),
+       display: ($display | del(.accessToken, .password, .clientSecret, .clientId)),
+       limits: ($limits // []),
+       limitsAvailability: $limitsAv,
+       faults: {
+         availability: $faultsAv,
+         count: (if $faultsN == "" then null else ($faultsN|tonumber) end),
+         reason: (if $faultsWhy == "" then null else $faultsWhy end)
+       }
+     }' | write_secure "$SNAPSHOT_FILE"
+}
+
+# Load a fresh-enough snapshot (build if stale / forced). Echoes the JSON.
+load_snapshot() {
+  ensure_state_dir
+  if [[ $FORCE_REFRESH -eq 1 ]] || ! snapshot_is_fresh; then
+    build_snapshot || { [[ -f "$SNAPSHOT_FILE" ]] || return $?; }
+  fi
+  local blob rc=0
+  blob="$(read_capped_file "$SNAPSHOT_FILE" "$FILE_MAX_BYTES")" || rc=$?
+  [[ $rc -eq 0 && -n "$blob" ]] || return 1
+  printf '%s\n' "$blob"
+}
+
+# ---------------------------------------------------------------------------
+# Derived helpers over a snapshot (read from stdin)
+# ---------------------------------------------------------------------------
+# Emit "used max pct name" lines for headline limits, in our priority order.
+headline_rows() { # <snapshot-json>
+  local snap="$1" name
+  for name in "${HEADLINE_LIMITS[@]}"; do
+    jq -r --arg n "$name" '
+      (.limits[]? | select(.name == $n)) as $l
+      | select($l != null)
+      | ($l.max - $l.remaining) as $used
+      | [ $used, $l.max,
+          (if $l.max > 0 then (($used*100)/$l.max)|floor else 0 end),
+          $l.name ] | @tsv
+    ' <<<"$snap"
+  done
+}
+
+sev_for_pct() { # <pct> -> green|warn|crit
+  local p="$1"
+  if   (( p >= CRIT_PCT )); then echo crit
+  elif (( p >= WARN_PCT )); then echo warn
+  else echo ok; fi
+}
+
+is_sandbox() { jq -r '.org.IsSandbox // false' <<<"$1"; }
+org_name()   { neutralize_plaintext "$(jq -r '.display.alias // .org.Name // .display.username // "org"' <<<"$1")" 120; }
+org_user()   { neutralize_plaintext "$(jq -r '.display.username // "?"' <<<"$1")" 120; }
+org_pod()    { neutralize_plaintext "$(jq -r '.org.InstanceName // "?"' <<<"$1")" 64; }
+org_edition(){ neutralize_plaintext "$(jq -r '.org.OrganizationType // "?"' <<<"$1")" 64; }
+org_url()    { neutralize_plaintext "$(jq -r '.display.instanceUrl // "?"' <<<"$1")" 256; }
+snap_age()   { jq -r '((now - .ts)|floor)' <<<"$1"; }
+
+# Worst headline utilization -> "pct sev name used max"
+# Limits miss → unknown (never silent 0% green).
+peak_util() { # <snapshot>
+  local snap="$1" line best_pct=-1 best_name="" best_used=0 best_max=0
+  local lav
+  lav="$(jq -r '.limitsAvailability // "ok"' <<<"$snap" 2>/dev/null || echo ok)"
+  if [[ "$lav" != "ok" ]]; then
+    echo "? unknown - 0 0"
+    return
+  fi
+  while IFS=$'\t' read -r used max pct name; do
+    [[ -z "${pct:-}" ]] && continue
+    if (( pct > best_pct )); then best_pct=$pct; best_name=$name; best_used=$used; best_max=$max; fi
+  done < <(headline_rows "$snap")
+  (( best_pct < 0 )) && { echo "? unknown - 0 0"; return; }
+  echo "$best_pct $(sev_for_pct "$best_pct") $best_name $best_used $best_max"
+}
+
+human_secs() { # 135 -> "2m"
+  local s="$1"
+  (( s < 60 )) && { echo "${s}s"; return; }
+  (( s < 3600 )) && { echo "$(( s/60 ))m"; return; }
+  echo "$(( s/3600 ))h"
+}
+
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+cmd_bar() {
+  # Always produce valid Waybar JSON, even on error, so the bar never breaks.
+  # Idle = identity + worst signal (SBX · 62%). --all: desk in tooltip only.
+  local all=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --all) all=1; shift ;;
+      *) shift ;;
+    esac
+  done
+  if ! have_sf; then
+    jq -nc '{text:"SF –", tooltip:"bluechip: sf CLI not found on PATH\nclick: pin · middle: doctor", class:["unknown"]}'
+    return 0
+  fi
+  local snap
+  snap="$(load_snapshot 2>/dev/null)" || {
+    jq -nc '{text:"SF ?", tooltip:"bluechip: no org — run `sf org login web`\nclick: pin · middle: doctor", class:["unknown"]}'
+    return 0
+  }
+
+  local state envclass env
+  state="$(sandbox_state "$snap")"
+  case "$state" in
+    sandbox) env="SANDBOX"; envclass="sandbox" ;;
+    prod)    env="PROD";    envclass="prod" ;;
+    *)       env="UNKNOWN"; envclass="unknown" ;;
+  esac
+  local name oid age idchip
+  name="$(org_name "$snap")"
+  oid="$(org_id "$snap")"
+  age="$(human_secs "$(snap_age "$snap")")"
+  idchip="$(env_chip "$snap")"
+
+  compute_bar_signal "$snap"
+  local pct_json="null"
+  [[ "$SIGNAL_PCT" =~ ^[0-9]+$ && "$SIGNAL_SEV" != "unknown" ]] && pct_json="$SIGNAL_PCT"
+  # Keep percentage null when the worst signal is not a known limit (never 0% green).
+  [[ "$SIGNAL_KIND" != "limit" ]] && pct_json="null"
+  [[ "$SIGNAL_SEV" == "unknown" ]] && pct_json="null"
+
+  local peak_line fault_line
+  if [[ "$(jq -r '.limitsAvailability // "ok"' <<<"$snap")" != "ok" ]]; then
+    peak_line="Peak limit: unknown (limits API missed — not 0%)"
+  else
+    local _pct _sev _pk _used _max
+    read -r _pct _sev _pk _used _max < <(peak_util "$snap")
+    _pk="$(neutralize_plaintext "$_pk" 80)"
+    if [[ "$_sev" == "unknown" ]]; then
+      peak_line="Peak limit: unknown (limits API missed — not 0%)"
+    else
+      peak_line="$(printf 'Peak limit: %s  %s/%s (%s%%)' "$_pk" "$_used" "$_max" "$_pct")"
+    fi
+  fi
+  if [[ "$SIGNAL_FAULTS_AV" == "ok" ]]; then
+    if [[ "$SIGNAL_FAULTS" == "0" ]]; then fault_line="Faults: none"
+    else fault_line="Faults: $SIGNAL_FAULTS"; fi
+  else
+    fault_line="Faults: unknown ($(jq -r '.faults.reason // "FlowInterview query missed"' <<<"$snap"))"
+  fi
+
+  local text tooltip
+  text="$(printf '%s · %s' "$idchip" "$SIGNAL_TEXT")"
+  tooltip="$(printf '%s\n\n%s (%s)\nOrg Id: %s\nInstance: %s · %s\nUser: %s\n%s\n%s\n\nUpdated %s ago\nclick: pin org · middle-click: doctor · right-click: refresh\nCopy pack: bluechip incident | wl-copy' \
+    "$text" "$name" "$env" "$oid" "$(org_pod "$snap")" "$(org_edition "$snap")" \
+    "$(org_user "$snap")" "$peak_line" "$fault_line" "$age")"
+
+  local desk_json="null" desk_tip="" desk_blob
+  # --all is opt-in. One desk pulse (cached per-alias TTL) — never N extra Tooling
+  # round-trips on the idle chip, and never compute_desk twice.
+  if [[ $all -eq 1 ]] && declare -F compute_desk >/dev/null 2>&1; then
+    desk_blob="$(compute_desk)"
+    desk_tip="$(desk_tooltip_block "$desk_blob")"
+    [[ -n "$desk_tip" ]] && tooltip="$(printf '%s\n\nDesk (each org keeps its own chrome):\n%s' "$tooltip" "$desk_tip")"
+    desk_json="$(jq -c '.orgs' <<<"$desk_blob")"
+  fi
+
+  local pulse=0
+  bar_pulse_active && pulse=1
+
+  jq -nc --arg t "$text" --arg tip "$tooltip" --arg env "$envclass" --arg sev "$SIGNAL_SEV" \
+    --argjson pct "$pct_json" --argjson desk "$desk_json" --argjson pulse "$pulse" \
+    --arg kind "$SIGNAL_KIND" --arg st "$state" \
+    '{
+       text: $t,
+       tooltip: $tip,
+       class: (
+         [$env, $sev] + (if $pulse == 1 then ["pulse"] else [] end)
+         | unique
+       ),
+       percentage: $pct,
+       sandboxState: $st,
+       signal: {kind:$kind, severity:$sev, text:$t}
+     } + (if $desk == null then {} else {desk:$desk} end)'
+}
+
+cmd_orgs() {
+  have_sf || die "sf CLI not found. Install @salesforce/cli and run: sf org login web"
+  local result pin
+  result="$(sf_json org list)" || {
+    if [[ "${WANT_JSON:-0}" -eq 1 ]]; then
+      probe_error_json transient "could not list orgs"
+      return 1
+    fi
+    die "could not list orgs (is sf configured?)"
+  }
+  pin="$(pinned_org)"
+  if [[ "${WANT_JSON:-0}" -eq 1 ]]; then
+    jq -n --arg pin "$pin" --argjson r "$result" '
+      {
+        ok: true,
+        pinnedOrg: (if $pin == "" then null else $pin end),
+        orgs: (
+          ([ $r.nonScratchOrgs?, $r.sandboxes?, $r.scratchOrgs?, $r.devHubs? ] | map(. // []) | add)
+          | map({
+              alias: (.alias // ""),
+              username: (.username // "?"),
+              status: (.connectedStatus // .status // ""),
+              isDefault: (.isDefaultUsername // false),
+              pinned: ((.alias // "") != "" and (.alias == $pin))
+            })
+        ),
+        error: null
+      }'
+    return 0
+  fi
+  printf '%s\n' "${BOLD}Salesforce orgs${RESET} ${DIM}(★ = pinned for bluechip)${RESET}"
+  local norg
+  norg="$(jq -r '([.nonScratchOrgs?, .sandboxes?, .scratchOrgs?, .devHubs?] | map(.//[]) | add | length)' <<<"$result")"
+  if [[ "$norg" == "0" ]]; then
+    printf '  %snone — no sf-authed orgs. Next: sf org login web%s\n' "$DIM" "$RESET"
+    return 0
+  fi
+  # nonScratchOrgs + sandboxes + scratchOrgs, flatten what exists.
+  jq -r '
+    ([.nonScratchOrgs?, .sandboxes?, .scratchOrgs?, .devHubs?] | map(.//[]) | add)
+    | map({alias:(.alias//""), username:(.username//"?"),
+           status:(.connectedStatus//.status//""), isDefault:(.isDefaultUsername//false)})
+    | .[] | [.alias, .username, .status, (.isDefault|tostring)] | @tsv
+  ' <<<"$result" | while IFS=$'\t' read -r alias user status isdefault; do
+      local mark="  "
+      if [[ -n "$alias" && "$alias" == "$pin" ]]; then mark="${YELLOW}★ ${RESET}"
+      elif [[ -z "$pin" && "$isdefault" == "true" ]]; then mark="${DIM}· ${RESET}"; fi
+      printf '%s%-22s %s%s%s  %s%s%s\n' "$mark" "${alias:-—}" "$CYAN" "$user" "$RESET" "$GREY" "$status" "$RESET"
+    done
+  [[ -z "$pin" ]] && printf '\n%sNo pin set — using sf default. Pin one: %sbluechip pin <alias>%s\n' "$DIM" "$RESET$BOLD" "$RESET"
+}
+
+cmd_pin() {
+  local alias="${1:-}"
+  ensure_state_dir
+  [[ -f "$STATE_FILE" ]] || echo '{}' | write_secure "$STATE_FILE"
+  if [[ -z "$alias" ]]; then
+    local cur; cur="$(pinned_org)"
+    if [[ "${WANT_JSON:-0}" -eq 1 ]]; then
+      local snap blob
+      snap="$(load_snapshot 2>/dev/null)" || snap=""
+      blob="$(org_json_blob "$snap")"
+      jq -n --arg pin "$cur" --argjson org "$blob" \
+        '{ok:true,pinnedOrg:(if $pin=="" then null else $pin end),org:$org,error:null}'
+      return 0
+    fi
+    printf 'Pinned org: %s\n' "${cur:-<none — using sf default>}"
+    return 0
+  fi
+  if [[ "$alias" == "-" ]]; then
+    jq 'del(.pinnedOrg)' "$STATE_FILE" | write_secure "$STATE_FILE"
+    echo "Cleared pin — bluechip will use the sf default org."
+  else
+    have_sf || die "sf CLI not found."
+    local to_state to_id
+    pin_fetch_identity "$alias" || die "could not read org '$alias' (is it authed?)"
+    to_state="$PIN_FETCH_STATE"
+    to_id="$PIN_FETCH_ID"
+    pin_current_identity || true
+    # First pin (no prior snapshot): treat as same-class if we cannot compare.
+    if [[ -z "$(pinned_org)" && "${PIN_CUR_STATE:-unknown}" == "unknown" ]]; then
+      PIN_CUR_STATE="$to_state"
+    fi
+    pin_confirm_switch "$alias" "$to_state" "$to_id" || return 1
+    jq --arg a "$alias" '.pinnedOrg = $a' "$STATE_FILE" | write_secure "$STATE_FILE"
+    if declare -F desk_remember_alias >/dev/null 2>&1; then
+      desk_remember_alias "$alias"
+    fi
+    printf 'Pinned %s%s%s for bluechip.\n' "$BOLD" "$alias" "$RESET"
+  fi
+  FORCE_REFRESH=1; load_snapshot >/dev/null 2>&1 || true
+}
+
+bar_gauge() { # <pct> <width> -> ■■■■□□□□  (colored)
+  local pct="$1" width="${2:-14}" filled i sev color
+  filled=$(( pct * width / 100 )); (( filled > width )) && filled=$width; (( filled < 0 )) && filled=0
+  sev="$(sev_for_pct "$pct")"
+  case "$sev" in crit) color="$RED";; warn) color="$YELLOW";; *) color="$GREEN";; esac
+  printf '%s' "$color"
+  for ((i=0;i<filled;i++)); do printf '■'; done
+  printf '%s' "$GREY"
+  for ((i=filled;i<width;i++)); do printf '□'; done
+  printf '%s' "$RESET"
+}
+
+cmd_limits() {
+  have_sf || die "sf CLI not found."
+  local snap; snap="$(load_snapshot)" || die "could not read org limits."
+  if [[ "${WANT_JSON:-0}" -eq 1 ]]; then
+    local lav
+    lav="$(jq -r '.limitsAvailability // "ok"' <<<"$snap")"
+    jq -n --argjson org "$(org_json_blob "$snap")" --argjson snap "$snap" --arg lav "$lav" '
+      {
+        ok: true,
+        availability: (if $lav == "ok" then "ok" else "unknown" end),
+        org: $org,
+        limits: (
+          if $lav != "ok" then []
+          else
+            [ $snap.limits[]? | (.max - .remaining) as $used | {
+                name: .name,
+                used: $used,
+                max: .max,
+                pct: (if .max > 0 then (($used*100)/.max)|floor else 0 end)
+              } ]
+          end
+        ),
+        error: (if $lav == "ok" then null else {code:"limits_unavailable", message:"limits API missed — not 0%"} end)
+      }'
+    return 0
+  fi
+  printf '%s%s%s  %s\n\n' "$BOLD" "$(org_name "$snap")" "$RESET" "${DIM}limit utilization${RESET}"
+  local lav
+  lav="$(jq -r '.limitsAvailability // "ok"' <<<"$snap")"
+  if [[ "$lav" != "ok" ]]; then
+    printf '  %sunknown (limits API missed — not 0%%)%s\n' "$GREY" "$RESET"
+    return 0
+  fi
+  local nlim
+  nlim="$(jq -r '.limits | length' <<<"$snap")"
+  if [[ "$nlim" == "0" ]]; then
+    printf '  %snone%s\n' "$DIM" "$RESET"
+    return 0
+  fi
+  # All limits, sorted by pct used desc.
+  jq -r '
+    .limits[]? |
+    (.max - .remaining) as $used
+    | [ .name, $used, .max,
+        (if .max > 0 then (($used*100)/.max)|floor else 0 end) ] | @tsv
+  ' <<<"$snap" 2>/dev/null | sort -t$'\t' -k4 -nr | while IFS=$'\t' read -r name used max pct; do
+      name="$(neutralize_plaintext "$name" 80)"
+      printf '  %s %4d%%  %-34s %s%s/%s%s\n' "$(bar_gauge "$pct" 12)" "$pct" "$name" "$DIM" "$used" "$max" "$RESET"
+    done
+}
+
+cmd_flows() {
+  have_sf || die "sf CLI not found."
+  set_oflag
+  local res raw why
+  raw="$(sf_try data query "${OFLAG[@]}" -q \
+    "SELECT Id, InterviewLabel, InterviewStatus, CurrentElement, PauseLabel, CreatedDate FROM FlowInterview WHERE InterviewStatus IN ('Error','Paused') ORDER BY CreatedDate DESC LIMIT 25")" \
+    || {
+      why="$(classify_sf_error "$raw")"
+      if [[ "${WANT_JSON:-0}" -eq 1 ]]; then
+        local snap; snap="$(load_snapshot 2>/dev/null)" || snap=""
+        jq -n --argjson org "$(org_json_blob "$snap")" --arg c "$why" \
+          '{ok:false,availability:"unknown",org:$org,interviews:[],note:"best-effort — hard faults may not persist",error:{code:$c,message:("FlowInterview query failed: "+$c)}}'
+        return 0
+      fi
+      echo "${DIM}unknown (${why})${RESET} — hard faults roll back and may not persist; see paused + Setup Audit Trail."
+      return 0
+    }
+  res="$(jq -c '.result' <<<"$raw")"
+  if [[ "${WANT_JSON:-0}" -eq 1 ]]; then
+    local snap; snap="$(load_snapshot 2>/dev/null)" || snap=""
+    jq -n --argjson org "$(org_json_blob "$snap")" --argjson res "$res" '
+      {
+        ok: true,
+        availability: "ok",
+        org: $org,
+        interviews: [
+          ($res.records // [])[]? | {
+            id: .Id,
+            status: .InterviewStatus,
+            label: .InterviewLabel,
+            element: (.CurrentElement // .PauseLabel),
+            createdDate: .CreatedDate
+          }
+        ],
+        note: "best-effort — hard faults may not persist",
+        error: null
+      }'
+    return 0
+  fi
+  local n; n="$(jq -r '.records | length' <<<"$res")"
+  if [[ "$n" == "0" ]]; then
+    printf '%s none — no errored or paused Flow interviews right now.%s\n' "$GREEN" "$RESET"
+    printf '%sHard faults roll back and may not persist as FlowInterview rows — cross-check `bluechip changes`.%s\n' "$DIM" "$RESET"
+    return 0
+  fi
+  printf '%s%s open/failed Flow interviews%s\n\n' "$BOLD" "$n" "$RESET"
+  jq -r '.records[] | [.InterviewStatus, (.InterviewLabel//"?"), (.CurrentElement//.PauseLabel//"—"), .CreatedDate] | @tsv' <<<"$res" \
+  | while IFS=$'\t' read -r status label element created; do
+      local color="$YELLOW"; [[ "$status" == "Error" ]] && color="$RED"
+      status="$(neutralize_plaintext "$status" 32)"
+      label="$(neutralize_plaintext "$label" 120)"
+      element="$(neutralize_plaintext "$element" 80)"
+      printf '  %s%-8s%s %-40s %sat %s%s  %s%s%s\n' "$color" "$status" "$RESET" "$label" "$DIM" "$element" "$RESET" "$GREY" "${created%%.*}" "$RESET"
+    done
+}
+
+cmd_context() {
+  have_sf || die "sf CLI not found."
+  local snap; snap="$(load_snapshot)" || die "could not read org."
+  set_oflag
+  local flows changes logs
+  flows="$(sf_json data query "${OFLAG[@]}" -q \
+    "SELECT InterviewLabel, InterviewStatus, CurrentElement, CreatedDate FROM FlowInterview WHERE InterviewStatus IN ('Error','Paused') ORDER BY CreatedDate DESC LIMIT 10")" || flows='{"records":[]}'
+  changes="$(sf_json data query "${OFLAG[@]}" -q \
+    "SELECT Action, Section, CreatedDate, CreatedBy.Name FROM SetupAuditTrail ORDER BY CreatedDate DESC LIMIT 10")" || changes='{"records":[]}'
+  logs="$(sf_json data query "${OFLAG[@]}" -q \
+    "SELECT Id, Operation, Status, StartTime, LogLength FROM ApexLog ORDER BY StartTime DESC LIMIT 10")" || logs='{"records":[]}'
+
+  local state env
+  state="$(sandbox_state "$snap")"
+  case "$state" in
+    sandbox) env="SANDBOX" ;;
+    prod)    env="PROD" ;;
+    *)       env="UNKNOWN" ;;
+  esac
+
+  if [[ "${WANT_JSON:-0}" -eq 1 ]]; then
+    local md
+    md="$(_cmd_context_markdown "$snap" "$env" "$flows" "$changes" "$logs")"
+    jq -n --argjson org "$(org_json_blob "$snap")" --arg env "$env" \
+      --argjson snap "$snap" --argjson flows "$flows" --argjson changes "$changes" \
+      --argjson logs "$logs" --arg md "$md" \
+      '{
+         ok: true,
+         availability: "ok",
+         sandboxState: $org.sandboxState,
+         org: $org,
+         env: $env,
+         limits: $snap.limits,
+         limitsAvailability: ($snap.limitsAvailability // "ok"),
+         flowFaults: ($flows.records // []),
+         changes: ($changes.records // []),
+         apexLogs: ($logs.records // []),
+         markdown: $md,
+         error: null
+       }' | redact_secrets_json
+    return 0
+  fi
+
+  _cmd_context_markdown "$snap" "$env" "$flows" "$changes" "$logs"
+}
+
+_cmd_context_markdown() {
+  # Relies on caller having snap, env, flows, changes, logs in scope via args.
+  local snap="$1" env="$2" flows="$3" changes="$4" logs="$5" extra="${6:-}"
+  cat <<EOF
+# Salesforce org context pack
+_Generated by bluechip $BLUECHIP_VERSION · read-only · $(date -u +%Y-%m-%dT%H:%M:%SZ)_
+
+## Org
+- **Name:** $(org_name "$snap") (**$env**)
+- **Org Id:** $(org_id "$snap")
+- **Edition:** $(org_edition "$snap")   **Instance:** $(org_pod "$snap")
+- **User:** $(org_user "$snap")
+- **Instance URL:** $(org_url "$snap")
+
+$([[ -n "$extra" ]] && printf '%s\n' "$extra")
+
+## Headline limit utilization
+$(headline_rows "$snap" | while IFS=$'\t' read -r used max pct name; do
+    name="$(neutralize_plaintext "$name" 80)"
+    printf -- '- %s — %s%% used (%s / %s)\n' "$name" "$pct" "$used" "$max"; done)
+$( [[ -n "$(headline_rows "$snap")" ]] || echo "- unknown (limits API missed — not 0%)" )
+
+## Open / failed Flow interviews (best-effort — hard faults may not persist)
+$(jq -r '.records[]? | [.InterviewStatus, (.InterviewLabel // "?"), (.CurrentElement // "—"), .CreatedDate] | @tsv' <<<"$flows" \
+  | while IFS=$'\t' read -r st lbl el dt; do
+      st="$(neutralize_plaintext "$st" 32)"
+      lbl="$(neutralize_plaintext "$lbl" 120)"
+      el="$(neutralize_plaintext "$el" 80)"
+      printf -- '- [%s] %s — element: %s — %s\n' "$st" "$lbl" "$el" "$dt"
+    done)
+$(jq -e '.records | length > 0' <<<"$flows" >/dev/null || echo "- (none)")
+
+## Recent Setup Audit Trail
+$(jq -r '.records[]? | [.CreatedDate, (.CreatedBy.Name // "?"), (.Section // "—"), .Action] | @tsv' <<<"$changes" \
+  | while IFS=$'\t' read -r dt who sec act; do
+      who="$(neutralize_plaintext "$who" 80)"
+      sec="$(neutralize_plaintext "$sec" 80)"
+      act="$(neutralize_plaintext "$act" 256)"
+      printf -- '- %s — %s — %s: %s\n' "$dt" "$who" "$sec" "$act"
+    done)
+$(jq -e '.records | length > 0' <<<"$changes" >/dev/null || echo "- (none)")
+
+## Recent ApexLog ids (pull with: sf apex log get --log-id <id>)
+$(jq -r '.records[]? | [.Id, .Operation, .Status, .StartTime, (.LogLength|tostring)] | @tsv' <<<"$logs" \
+  | while IFS=$'\t' read -r lid op st tm ln; do
+      op="$(neutralize_plaintext "$op" 64)"
+      st="$(neutralize_plaintext "$st" 32)"
+      printf -- '- %s — %s — %s — %s — %s bytes\n' "$lid" "$op" "$st" "$tm" "$ln"
+    done)
+$(jq -e '.records | length > 0' <<<"$logs" >/dev/null || echo "- (none)")
+
+---
+_No secrets included. Access token, client id/secret are stripped before this bundle is built._
+_This pack is display-only — it is not write authority. Agents must not deploy from it._
+EOF
+}
+
+# Sibling includes so install.sh's symlink still resolves.
+# shellcheck source=bluechip-hygiene.inc
+source "$(dirname "$_bluechip_self")/bluechip-hygiene.inc"
+# shellcheck source=bluechip-named-creds.inc
+source "$(dirname "$_bluechip_self")/bluechip-named-creds.inc"
+# shellcheck source=bluechip-trace.inc
+source "$(dirname "$_bluechip_self")/bluechip-trace.inc"
+# shellcheck source=bluechip-fls.inc
+source "$(dirname "$_bluechip_self")/bluechip-fls.inc"
+# shellcheck source=bluechip-offenders.inc
+source "$(dirname "$_bluechip_self")/bluechip-offenders.inc"
+# shellcheck source=bluechip-desk.inc
+source "$(dirname "$_bluechip_self")/bluechip-desk.inc"
+# shellcheck source=bluechip-incident.inc
+source "$(dirname "$_bluechip_self")/bluechip-incident.inc"
+
+ascii_logo() {
+  cat <<'EOF'
+   ___  _           _    _
+  | _ )| |_  _ ___ | |_ (_)_ __
+  | _ \| | || / -_)| ' \| | '_ \
+  |___/|_|\_,_\___||_||_|_| .__/
+                          |_|
+EOF
+}
+
+cmd_doctor() {
+  have_sf || die "sf CLI not found. Install @salesforce/cli and run: sf org login web"
+  if [[ "${WANT_JSON:-0}" -eq 1 ]]; then
+    compute_incident
+    return $?
+  fi
+  local snap; snap="$(load_snapshot)" || die "could not read org — is an org authed? try: sf org login web"
+
+  local state env envcolor name age
+  state="$(sandbox_state "$snap")"
+  case "$state" in
+    sandbox) env="SANDBOX"; envcolor="$YELLOW" ;;
+    prod)    env="PROD";    envcolor="$RED" ;;
+    *)       env="UNKNOWN"; envcolor="$GREY" ;;
+  esac
+  name="$(org_name "$snap")"
+  age="$(human_secs "$(snap_age "$snap")")"
+
+  compute_bar_signal "$snap"
+  local faults_txt fcolor="$GREEN"
+  if [[ "$SIGNAL_FAULTS_AV" == "ok" ]]; then
+    if [[ "$SIGNAL_FAULTS" == "0" ]]; then
+      faults_txt="none"
+    else
+      faults_txt="$SIGNAL_FAULTS"
+      fcolor="$RED"
+    fi
+  else
+    faults_txt="unknown ($(jq -r '.faults.reason // "FlowInterview query missed"' <<<"$snap"))"
+    fcolor="$GREY"
+  fi
+
+  set_oflag
+  local lastchange last_raw last_n="0"
+  last_raw="$(sf_try data query "${OFLAG[@]}" -q \
+    "SELECT CreatedDate, CreatedBy.Name, Section FROM SetupAuditTrail ORDER BY CreatedDate DESC LIMIT 1")" || true
+  if [[ -z "$last_raw" ]] || ! jq -e '.status == 0' <<<"$last_raw" >/dev/null 2>&1; then
+    lastchange="unknown ($(classify_sf_error "${last_raw:-}"))"
+  else
+    last_n="$(jq -r '.result.records | length' <<<"$last_raw")"
+    if [[ "$last_n" == "0" ]]; then
+      lastchange="none"
+    else
+      lastchange="$(jq -r '.result.records[0] | "\(.CreatedDate|split("T")[0]) · \(.CreatedBy.Name // "?") · \(.Section // "—")"' <<<"$last_raw")"
+      lastchange="$(neutralize_plaintext "$lastchange" 200)"
+    fi
+  fi
+
+  printf '%s%s%s' "$BLUE$BOLD" "$(ascii_logo)" "$RESET"
+  printf '\n'
+  printf '  %s%s%s   %s %s %s\n' "$BOLD" "$name" "$RESET" "$envcolor$BOLD" "$env" "$RESET"
+  printf '  %sOrg Id: %s · %s · %s%s\n' "$GREY" "$(org_id "$snap")" "$(org_edition "$snap")" "$(org_pod "$snap")" "$RESET"
+  printf '  %s%s%s\n' "$DIM" "$(org_user "$snap")" "$RESET"
+  printf '  %ssignal %s%s%s\n\n' "$DIM" "$BOLD" "$(env_chip "$snap") · $SIGNAL_TEXT" "$RESET"
+
+  local rows
+  rows="$(headline_rows "$snap")"
+  if [[ -z "$rows" ]]; then
+    printf '   %sunknown (limits API missed — not 0%%)%s\n' "$GREY" "$RESET"
+  else
+    while IFS=$'\t' read -r used max pct lname; do
+      printf '   %-30.30s %s %4d%%\n' "$lname" "$(bar_gauge "$pct" 18)" "$pct"
+    done <<<"$rows"
+  fi
+
+  printf '\n'
+  printf '   %sData health%s        %s\n' "$DIM" "$RESET" "$(hygiene_doctor_line)"
+  printf '   %sFlow faults/paused%s  %s%s%s\n' "$DIM" "$RESET" "$fcolor$BOLD" "$faults_txt" "$RESET"
+  printf '   %sLast setup change%s   %s\n' "$DIM" "$RESET" "$lastchange"
+  printf '   %sCopy pack%s           %sbluechip incident | wl-copy%s\n' "$DIM" "$RESET" "$CYAN" "$RESET"
+  printf '\n   %ssnapshot %s ago · bluechip %s · read-only · unofficial%s\n' \
+    "$GREY" "$age" "$BLUECHIP_VERSION" "$RESET"
+}
+
+notify() { # <level> <msg>
+  local level="$1" msg="$2" urg="normal"
+  [[ "$level" == "critical" ]] && urg="critical"
+  msg="$(neutralize_plaintext "$msg" 240)"
+  level="$(neutralize_plaintext "$level" 32)"
+  if notify_send_safe "Salesforce: $level" "$msg" "$urg"; then
+    return 0
+  fi
+  printf '[%s] %s\n' "$level" "$msg" >&2
+}
+
+cmd_mcp_config() {
+  local root server
+  root="$(cd "$(dirname "$_bluechip_self")/.." && pwd)"
+  server="$root/mcp/server.py"
+  cat <<EOF
+{
+  "mcpServers": {
+    "bluechip": {
+      "command": "python3",
+      "args": ["$server"],
+      "env": {
+        "BLUECHIP_BIN": "$root/bin/bluechip"
+      }
+    }
+  }
+}
+EOF
+}
+
+cmd_wave2_stub() {
+  local name="$1"
+  cat <<EOF
+bluechip: '$name' is not in this wave.
+
+See docs/SHIP-BACKLOG.md — later:
+  types       Apex-defined type explorer (Tooling Apex Class / Flow retrieve)
+
+Wave 2 shipped: fls, fls-propose, offenders, desk, bar --all, clipboard.
+TraceFlag create is CLI-only (bluechip trace start). MCP stays display-only.
+EOF
+  return 2
+}
+
+cmd_help() {
+  local all=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --all|-a|all) all=1; shift ;;
+      *) shift ;;
+    esac
+  done
+  cat <<EOF
+${BOLD}bluechip${RESET} — Salesforce admin cockpit for Omarchy  ${DIM}v$BLUECHIP_VERSION${RESET}
+Default path: ${BOLD}install → sf org login web → bluechip doctor → chip${RESET}
+Pipeline: ${DIM}pin → pulse → probe → pack → agent → confirm write${RESET}
+See ${BOLD}docs/UX-PASS.md${RESET}. Rides your ${BOLD}sf${RESET} login — no Connected App.
+
+${BOLD}PRIMARY${RESET}  ${DIM}(each supports --json where it returns data)${RESET}
+  ${CYAN}doctor${RESET}          Org-vitals card  ${DIM}(--json = incident object)${RESET}
+  ${CYAN}bar${RESET} [--all]     Waybar JSON: identity + worst signal (SBX · 62%)
+  ${CYAN}pin${RESET} <alias|->    Pin an org (- clears; uses sf default)
+  ${CYAN}orgs${RESET}            List sf-authed orgs (★ = pinned)
+  ${CYAN}limits${RESET}          Full limit utilization table
+  ${CYAN}flows${RESET}           Errored / paused Flow interviews
+  ${CYAN}incident${RESET}        One pack: signal + limits + faults + NC summary + logs
+  ${CYAN}context${RESET}         Markdown incident bundle (display-only)
+  ${CYAN}watch${RESET} [--jsonl] Delta loop — mako / pulse on real transitions
+  ${CYAN}help${RESET} [--all]    This screen; --all lists every verb
+
+${BOLD}PIPES${RESET}
+  ${DIM}bluechip context | wl-copy${RESET}
+  ${DIM}bluechip incident --json | jq .signal${RESET}
+  ${DIM}bluechip hygiene --json | jq .overall${RESET}
+
+${BOLD}OPTIONS${RESET}
+  -o, --org <alias>   Target this org for one command
+  --refresh           Ignore cache and re-query Salesforce
+  --json              Machine-readable JSON
+  --yes               Sandbox-only write confirm (banned on prod / unknown)
+  --no-color          Plain output
+
+${DIM}MCP is display-only. TraceFlag start/stop require a human confirm in the CLI.${RESET}
+${DIM}Unofficial · works with Salesforce® · not affiliated with Salesforce, Inc.${RESET}
+EOF
+  if [[ $all -eq 1 ]]; then
+    cat <<EOF
+
+${BOLD}ADVANCED${RESET}
+  ${CYAN}hygiene${RESET}         Read-only data probe (measured / unknown; H1–H10)
+  ${CYAN}changes${RESET}         Recent Setup Audit Trail (--json)
+  ${CYAN}clipboard${RESET}       Clipboard → context pack (toast on success only)
+  ${CYAN}named-creds${RESET}     Named / External Credential inspector (never secrets)
+  ${CYAN}fls${RESET}             FLS / perm-set matrix --user --fields (read-only)
+  ${CYAN}fls-propose${RESET}     FLS proposal diff only (does not apply)
+  ${CYAN}offenders${RESET}       Limit offenders since 9am (Event Log; unknown if unavailable)
+  ${CYAN}desk${RESET}            Multi-org pulse (per-org chrome)
+  ${CYAN}trace${RESET}           start | status | stop — confirm-gated TraceFlag (CLI only)
+  ${CYAN}logs${RESET}            Recent ApexLog [--follow] [--body]
+  ${CYAN}scratchpad${RESET}      Hyprland special workspace (logs --follow / --sf)
+  ${CYAN}refresh${RESET}         Force-refresh the cached snapshot
+  ${CYAN}mcp-config${RESET}      Print Cursor/Claude MCP stdio snippet
+  ${CYAN}version${RESET}
+
+${BOLD}LATER${RESET}  ${DIM}types — Apex-defined type explorer; QML panel (Fabius). docs/SHIP-BACKLOG.md${RESET}
+EOF
+  else
+    printf '\n%sMore verbs: bluechip help --all · product SoT: docs/UX-PASS.md%s\n' "$DIM" "$RESET"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Dispatch
+# ---------------------------------------------------------------------------
+need jq
+case "$CMD" in
+  bar)       cmd_bar "$@" ;;
+  doctor)    cmd_doctor "$@" ;;
+  orgs)      cmd_orgs "$@" ;;
+  pin)       cmd_pin "$@" ;;
+  limits)    cmd_limits "$@" ;;
+  hygiene)   cmd_hygiene "$@" ;;
+  flows)     cmd_flows "$@" ;;
+  changes)   cmd_changes "$@" ;;
+  incident)  cmd_incident "$@" ;;
+  context)   cmd_context "$@" ;;
+  named-creds|named-credentials|nc) cmd_named_creds "$@" ;;
+  fls)       cmd_fls "$@" ;;
+  fls-propose|fls_propose) cmd_fls_propose "$@" ;;
+  offenders) cmd_offenders "$@" ;;
+  desk)      cmd_desk "$@" ;;
+  clipboard) cmd_clipboard "$@" ;;
+  scratchpad) cmd_scratchpad "$@" ;;
+  trace)     cmd_trace "$@" ;;
+  logs)      cmd_logs "$@" ;;
+  watch)     cmd_watch "$@" ;;
+  mcp-config|mcp) cmd_mcp_config "$@" ;;
+  types)     cmd_wave2_stub "$CMD" ;;
+  refresh)   FORCE_REFRESH=1; load_snapshot >/dev/null && echo "Snapshot refreshed." ;;
+  version|-v|--version) echo "bluechip $BLUECHIP_VERSION" ;;
+  help|-h|--help|"") cmd_help "$@" ;;
+  *) die "unknown command: $CMD (try: bluechip help)" ;;
+esac

@@ -1,52 +1,68 @@
-# Ship backlog
+# Bluechip ship backlog
 
-**Build tip:** [`bluechip-v1`](https://github.com/outboundsync/omarchy-bluechip/tree/bluechip-v1)  
-**Contract SoT:** `main` ([VISION.md](../VISION.md)) until Harris promotes.
+Honesty layer for **`main`** (active tip). `bluechip-v1` is a historical branch.
 
-Implement on `bluechip-v1`. Do not land CLI on `main` ahead of promote. Preserve adversarial-review contracts:
-
-- `sandboxState` is three-valued (`prod` | `sandbox` | `unknown`) — never print PROD when `Organization.IsSandbox` is unreadable.
-- **Confirm-before-write matrix** — context pack is not write authority; ban silent `--yes` on prod.
-- **Hygiene H1–H10** — no letter grade until measured dimensions pass; all-unknown → no grade, no F, keep last-good.
-- **No false graceful degradation** — limits/fields/probes that miss are `unknown`, not 0% green or scored 100.
-
-## Already on `bluechip-v1` (read-only beachhead)
-
-Org pin + three-valued chrome · API/limit pulse · hygiene probe · Flow-fault list (best-effort) · Setup change feed · agent context pack · `doctor` / `watch`. Tooling API, Metadata API, MCP, and confirm-gated writes are **not** called yet — do not claim them until a call exists.
+Agent contract: [AGENTS.md](../AGENTS.md). Recipes: [AGENT-PLAYBOOK.md](AGENT-PLAYBOOK.md).
+Confirm matrix: [VISION.md](../VISION.md#confirm-before-write-matrix). Salesforce
+I/O actually called: [VISION.md](../VISION.md#api-honesty).
 
 ---
 
-## Wave 1 — agent muscle + integration forensics
+## Shipped
 
-| # | Item | Why | Contract notes |
-| --- | --- | --- | --- |
-| 1 | **Local Bluechip MCP** (Tooling + Metadata + SOQL) | Hosted SObject MCP is not enough; agents need Flow, NC, TraceFlag context | Read scopes first; writes out of scope until Wave 2 gate |
-| 2 | **Named Credential / External Credential inspector** | “What header formula is live?” without leaking secrets | Formula + status only; never surface Consumer Secret |
-| 3 | **TraceFlag + log tail** | Debug-before-Activate without Setup log archaeology | Sandbox default; prod requires confirm matrix row |
+| Item | Notes |
+| --- | --- |
+| Display-only MCP | `mcp/server.py` wraps `bin/bluechip`. No deploy / FLS apply / TraceFlag create. |
+| Named Cred inspector | `bluechip named-creds`. Secrets never printed. |
+| TraceFlag + log tail | Only org write. Confirm-gated CLI (`--yes` banned on prod / unknown). MCP lists flags/logs only. |
+| FLS / perm-set matrix | `bluechip fls --user --fields`. Read vs Edit gaps. Unknown on SOQL miss. |
+| FLS proposal | `bluechip fls-propose`. Diff only. Apply not shipped. Not an MCP tool. |
+| Limit offenders | `bluechip offenders [--since 9am]`. Event Log when visible. Flex Credits `unknown`. Miss → unknown, never fake 0. |
+| Multi-org desk | `bluechip desk` + `bar --all`. Per-org chrome. Pin confirm still gates crossing. |
+| Clipboard → context | `bluechip clipboard`. Hyprland bind documented, not installed. |
+| Compact chip / incident / watch / scratchpad | [UX-PASS.md](UX-PASS.md) |
+| H1–H10, neutralize, 0700/0600, I/O caps | [CLEANUP-2026-09-15.md](CLEANUP-2026-09-15.md) |
 
-## Wave 2 — depth, multi-org, writes
+**MCP tools (display-only):** `get_context`, `get_incident`, `get_limits`,
+`list_flow_faults`, `get_hygiene`, `list_orgs` / `get_pin`, `get_named_creds`,
+`list_trace_flags`, `list_apex_logs`, `get_fls`, `list_offenders`, `get_desk`.
 
-| # | Item | Why | Contract notes |
-| --- | --- | --- | --- |
-| 4 | **FLS / perm-set matrix** (integration users) | Catch missing Edit before smoke tests | Compare required field list; sandbox-first writes |
-| 5 | **API limit offenders** | “What ate API since 9am?” ranked by connected app / user / pattern | Advisory until Event Monitoring / Limits data is verified |
-| 6 | **Multi-org polish** | Fast switch prod vs sandboxes; refresh age; stale-sandbox signals | Pin crossing sandbox↔prod triggers confirm |
-| 7 | **Clipboard / agent handoff** | Richer incident bundle than raw `context` paste | Display-only unless confirm matrix satisfied |
-| 8 | **Confirm-gated writes** | TraceFlag, FLS fix, Flow activate, metadata deploy | Implement matrix rows in UI; no hidden `--force` |
+**Kept everywhere:** three-valued `sandboxState`, unknown ≠ 0/100, last-good on
+hygiene (not Event Log bodies).
 
-## Later — forensics + DX parity
+---
 
-| # | Item | Why |
-| --- | --- | --- |
-| 9 | **Apex-defined type explorer** | IN_/OUT_2XX shapes for Flow HTTP callouts |
-| 10 | **DX / deploy drift** | Sandbox vs prod vs git when `sf` project is in play |
-| 11 | **Sharing / “why can’t X see Y?”** | Profile, perm set, group, OWD in one explanation |
+## Parked (not promised)
 
-## Still parked (not in waves above)
+Work that is **not** on the tip.
 
-- QML Omarchy shell module (Fabius)
-- Connected App / External Client App registration (Brutus)
+| Item | Why it is parked |
+| --- | --- |
+| Apex-defined type explorer | IN_/OUT_2XX HTTP-callout soup. Stub: `bluechip types`. |
+| DX drift | Sandbox vs prod vs git when DX is in play. |
+| Sharing forensics | “Why can’t X see Y?” |
+| Hosted / Connected App | Only if we leave local `sf` (remote MCP, marketplace, scopes the CLI session cannot inherit). |
+| QML / marketplace listing | CLI + Waybar + MCP is enough to operate on Omarchy. Quattro panel = Fabius. |
+| Paid OutboundSync attach API | Out of scope for this MIT repo. Optional deep-link only. |
+| FLS apply / Flow activate | Confirm matrix is documented. TraceFlag is the write that exists. |
+
+---
+
+## Connected App
+
+The tip rides `sf org login` + Tooling-via-`sf`. No Connected App to register.
+
+One becomes mandatory when any of these land: a host that cannot see the user’s
+local `sf`; OAuth scopes the CLI session cannot inherit; writes Salesforce will
+not allow via the CLI user’s session. Until then, do not scaffold one.
+
+---
+
+## What we do not do
+
 - Marketplace listing
-- OutboundSync paid attach beyond optional deep-link ([hygiene attach story](../VISION.md))
-
-Harris merges promote from `bluechip-v1` → `main`.
+- QML on this tip
+- OpenRouter / Clay sprawl
+- Secrets in the repo
+- Pretend the MIT hygiene probe is the paid OutboundSync SKU
+- Claim Tooling / Metadata retrieve/deploy unless a call exists ([VISION.md](../VISION.md#api-honesty))

@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# bluechip-scratchpad — Hyprland special-workspace summon for logs / sf+jq.
+# Spawn-if-missing. No QML. Bind is optional:
+#   bind = SUPER SHIFT, B, exec, bluechip-scratchpad
+set -euo pipefail
+
+TITLE="bluechip-scratchpad"
+WORKSPACE="bluechip"
+BLUECHIP_BIN="${BLUECHIP_BIN:-bluechip}"
+command -v "$BLUECHIP_BIN" >/dev/null 2>&1 || BLUECHIP_BIN="$(dirname "$0")/bluechip"
+
+usage() {
+  cat <<EOF
+bluechip scratchpad — Hyprland special workspace for a live org shell
+
+  scratchpad           Toggle special:${WORKSPACE}; spawn logs --follow if missing
+  scratchpad --sf      Spawn/focus an sf + jq session instead of log tail
+  scratchpad --dry-run Print the spawn command (no Hyprland required)
+  scratchpad --print-bind
+                       Print a Hyprland bind line
+
+Default session: ${BLUECHIP_BIN} logs --follow
+sf session:      hint + interactive bash (jq/sf on PATH)
+
+Does not require a desktop binding. Does not require QML.
+EOF
+}
+
+SESSION="logs"
+DRY=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --sf) SESSION="sf"; shift ;;
+    --dry-run|--dry) DRY=1; shift ;;
+    --print-bind)
+      printf 'bind = SUPER SHIFT, B, exec, bluechip-scratchpad\n'
+      exit 0
+      ;;
+    help|-h|--help) usage; exit 0 ;;
+    *) printf 'bluechip-scratchpad: unknown option %s\n' "$1" >&2; usage >&2; exit 1 ;;
+  esac
+done
+
+if [[ "$SESSION" == "sf" ]]; then
+  INNER='printf "%s\n" "bluechip scratchpad — sf + jq  (pin: bluechip pin, pulse: bluechip doctor --json | jq .signal)"; exec bash -l'
+else
+  INNER="${BLUECHIP_BIN} logs --follow; printf \"%s\\n\" \"log tail ended — shell kept\"; exec bash -l"
+fi
+
+term="${TERMINAL:-}"
+if [[ -z "$term" ]]; then
+  for c in kitty ghostty foot alacritty wezterm xterm; do
+    if command -v "$c" >/dev/null 2>&1; then term="$c"; break; fi
+  done
+fi
+term="${term:-xterm}"
+base="$(basename "$term")"
+
+spawn_cmd=()
+case "$base" in
+  kitty)    spawn_cmd=(kitty --class "$TITLE" --title "$TITLE" -e bash -lc "$INNER") ;;
+  ghostty)  spawn_cmd=(ghostty --class="$TITLE" "--title=$TITLE" -e bash -lc "$INNER") ;;
+  foot)     spawn_cmd=(foot --app-id "$TITLE" -T "$TITLE" bash -lc "$INNER") ;;
+  alacritty) spawn_cmd=(alacritty --class "$TITLE" -T "$TITLE" -e bash -lc "$INNER") ;;
+  wezterm)  spawn_cmd=(wezterm start --class "$TITLE" -- bash -lc "$INNER") ;;
+  *)        spawn_cmd=("$term" -T "$TITLE" -e bash -lc "$INNER") ;;
+esac
+
+if [[ $DRY -eq 1 ]]; then
+  printf '%s\n' "${spawn_cmd[*]}"
+  exit 0
+fi
+
+have_hypr=0
+command -v hyprctl >/dev/null 2>&1 && have_hypr=1
+
+client_exists() {
+  [[ $have_hypr -eq 1 ]] || return 1
+  hyprctl clients -j 2>/dev/null | jq -e --arg t "$TITLE" '
+    .[] | select((.title // "") == $t or (.class // "") == $t or (.initialClass // "") == $t)
+  ' >/dev/null 2>&1
+}
+
+if ! client_exists; then
+  "${spawn_cmd[@]}" >/dev/null 2>&1 &
+  disown || true
+  if [[ $have_hypr -eq 1 ]]; then
+    # Move the new window onto the special workspace when Hyprland sees it.
+    sleep 0.2
+    hyprctl dispatch movetoworkspacesilent "special:${WORKSPACE},class:${TITLE}" >/dev/null 2>&1 || true
+  fi
+fi
+
+if [[ $have_hypr -eq 1 ]]; then
+  hyprctl dispatch togglespecialworkspace "$WORKSPACE" >/dev/null 2>&1 || true
+fi
+exit 0
