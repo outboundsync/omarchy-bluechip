@@ -75,7 +75,7 @@ bluechip context | wl-copy      # now paste into your agent
 ## Notes / honesty
 
 - Flow faults are **best-effort**: hard faults roll back and may not persist as `FlowInterview`
-  rows. Bluechip surfaces errored/paused/waiting interviews and points you at `bluechip changes`
+  rows. Bluechip surfaces errored/paused interviews and points you at `bluechip changes`
   for the rest.
 - Everything is derived from `sf ... --json` (REST + Tooling + Limits). If `sf` can see it, so
   can Bluechip; if it can't, Bluechip says so instead of guessing.

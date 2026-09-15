@@ -9,7 +9,7 @@
 #   orgs              List sf-authed orgs; mark the pinned one
 #   pin [alias|-]     Pin an org for bluechip (— clears the pin, uses sf default)
 #   limits            Full limits table (amber/red)
-#   flows             Recent errored / paused / waiting Flow interviews (best-effort)
+#   flows             Recent errored / paused Flow interviews (best-effort)
 #   changes           What changed recently (Setup Audit Trail)
 #   context           Paste-ready incident bundle for Claude / Cursor / any agent
 #   watch [seconds]   Notify (mako) on amber→red limits or new flow faults
@@ -222,7 +222,7 @@ human_secs() { # 135 -> "2m"
 # ---------------------------------------------------------------------------
 cmd_bar() {
   # Always produce valid Waybar JSON, even on error, so the bar never breaks.
-  local snap sandbox env name api_pct api_sev peak pct sev pk_name used max age
+  local snap sandbox env name pct sev pk_name used max age
   if ! have_sf; then
     jq -nc '{text:" SF –", tooltip:"bluechip: sf CLI not found on PATH", class:["unknown"]}'
     return 0
@@ -248,10 +248,9 @@ cmd_bar() {
     "$(org_user "$snap")" "$pk_name" "$used" "$max" "$pct" "$age")"
 
   jq -nc --arg t "$text" --arg tip "$tooltip" --arg env "$envclass" --arg sev "$sev" \
-    '{text:$t, tooltip:$tip, class:[$env, $sev], percentage:('"$pct"')}'
+    --argjson pct "${pct:-0}" \
+    '{text:$t, tooltip:$tip, class:[$env, $sev], percentage:$pct}'
 }
-
-bar_glyphs_note() { :; }
 
 cmd_orgs() {
   have_sf || die "sf CLI not found. Install @salesforce/cli and run: sf org login web"
@@ -263,11 +262,12 @@ cmd_orgs() {
   jq -r '
     ([.nonScratchOrgs?, .sandboxes?, .scratchOrgs?, .devHubs?] | map(.//[]) | add)
     | map({alias:(.alias//""), username:(.username//"?"),
-           id:(.orgId//.orgId//""), status:(.connectedStatus//.status//"")})
-    | .[] | [.alias, .username, .status] | @tsv
-  ' <<<"$result" | while IFS=$'\t' read -r alias user status; do
-      local mark="  "; [[ -n "$alias" && "$alias" == "$pin" ]] && mark="${YELLOW}★ ${RESET}"
-      [[ -z "$pin" && "$status" == *Default* ]] && mark="${DIM}· ${RESET}"
+           status:(.connectedStatus//.status//""), isDefault:(.isDefaultUsername//false)})
+    | .[] | [.alias, .username, .status, (.isDefault|tostring)] | @tsv
+  ' <<<"$result" | while IFS=$'\t' read -r alias user status isdefault; do
+      local mark="  "
+      if [[ -n "$alias" && "$alias" == "$pin" ]]; then mark="${YELLOW}★ ${RESET}"
+      elif [[ -z "$pin" && "$isdefault" == "true" ]]; then mark="${DIM}· ${RESET}"; fi
       printf '%s%-22s %s%s%s  %s%s%s\n' "$mark" "${alias:-—}" "$CYAN" "$user" "$RESET" "$GREY" "$status" "$RESET"
     done
   [[ -z "$pin" ]] && printf '\n%sNo pin set — using sf default. Pin one: %sbluechip pin <alias>%s\n' "$DIM" "$RESET$BOLD" "$RESET"
@@ -326,11 +326,11 @@ cmd_flows() {
   set_oflag
   local res
   res="$(sf_json data query "${OFLAG[@]}" -q \
-    "SELECT Id, InterviewLabel, InterviewStatus, CurrentElement, PauseLabel, CreatedDate FROM FlowInterview WHERE InterviewStatus IN ('Error','Paused','Waiting') ORDER BY CreatedDate DESC LIMIT 25")" \
-    || { echo "${DIM}No queryable Flow interviews (note: hard faults roll back and may not persist — see paused/waiting + Setup Audit Trail).${RESET}"; return 0; }
+    "SELECT Id, InterviewLabel, InterviewStatus, CurrentElement, PauseLabel, CreatedDate FROM FlowInterview WHERE InterviewStatus IN ('Error','Paused') ORDER BY CreatedDate DESC LIMIT 25")" \
+    || { echo "${DIM}No queryable Flow interviews (note: hard faults roll back and may not persist — see paused + Setup Audit Trail).${RESET}"; return 0; }
   local n; n="$(jq -r '.records | length' <<<"$res")"
   if [[ "$n" == "0" ]]; then
-    printf '%s No errored, paused, or waiting Flow interviews right now.%s\n' "$GREEN" "$RESET"
+    printf '%s No errored or paused Flow interviews right now.%s\n' "$GREEN" "$RESET"
     printf '%sHard faults roll back and may not persist as FlowInterview rows — cross-check `bluechip changes`.%s\n' "$DIM" "$RESET"
     return 0
   fi
@@ -345,15 +345,16 @@ cmd_flows() {
 cmd_changes() {
   have_sf || die "sf CLI not found."
   set_oflag
-  local since="${1:-}" res
+  local res
   res="$(sf_json data query "${OFLAG[@]}" -q \
     "SELECT Action, Section, CreatedDate, CreatedBy.Name, Display FROM SetupAuditTrail ORDER BY CreatedDate DESC LIMIT 30")" \
     || die "could not read Setup Audit Trail (needs View Setup and Configuration)."
   printf '%sRecent setup changes%s %s(newest first)%s\n\n' "$BOLD" "$RESET" "$DIM" "$RESET"
   jq -r '.records[] | [ (.CreatedDate), (.CreatedBy.Name//"?"), (.Section//"—"), (.Display//.Action) ] | @tsv' <<<"$res" \
   | while IFS=$'\t' read -r created who section what; do
+      local when="${created%%.*}"; when="${when/T/ }"   # 2026-09-14T16:03:22.000+0000 -> 2026-09-14 16:03:22
       printf '  %s%s%s  %s%-16s%s %s\n     %s%s%s\n' \
-        "$GREY" "${created%%T*} ${created#*T}" "$RESET" "$CYAN" "$who" "$RESET" "$BLUE$section$RESET" "$DIM" "$what" "$RESET"
+        "$GREY" "$when" "$RESET" "$CYAN" "$who" "$RESET" "$BLUE$section$RESET" "$DIM" "$what" "$RESET"
     done
 }
 
@@ -363,7 +364,7 @@ cmd_context() {
   set_oflag
   local flows changes logs
   flows="$(sf_json data query "${OFLAG[@]}" -q \
-    "SELECT InterviewLabel, InterviewStatus, CurrentElement, CreatedDate FROM FlowInterview WHERE InterviewStatus IN ('Error','Paused','Waiting') ORDER BY CreatedDate DESC LIMIT 10")" || flows='{"records":[]}'
+    "SELECT InterviewLabel, InterviewStatus, CurrentElement, CreatedDate FROM FlowInterview WHERE InterviewStatus IN ('Error','Paused') ORDER BY CreatedDate DESC LIMIT 10")" || flows='{"records":[]}'
   changes="$(sf_json data query "${OFLAG[@]}" -q \
     "SELECT Action, Section, CreatedDate, CreatedBy.Name FROM SetupAuditTrail ORDER BY CreatedDate DESC LIMIT 10")" || changes='{"records":[]}'
   logs="$(sf_json data query "${OFLAG[@]}" -q \
@@ -429,7 +430,7 @@ cmd_doctor() {
   set_oflag
   local faults
   faults="$(sf_json data query "${OFLAG[@]}" -q \
-    "SELECT COUNT(Id) c FROM FlowInterview WHERE InterviewStatus IN ('Error','Paused','Waiting')" 2>/dev/null | jq -r '.records[0].c // "?"' 2>/dev/null)" || faults="?"
+    "SELECT COUNT(Id) c FROM FlowInterview WHERE InterviewStatus IN ('Error','Paused')" 2>/dev/null | jq -r '.records[0].c // "?"' 2>/dev/null)" || faults="?"
   local lastchange
   lastchange="$(sf_json data query "${OFLAG[@]}" -q \
     "SELECT CreatedDate, CreatedBy.Name, Section FROM SetupAuditTrail ORDER BY CreatedDate DESC LIMIT 1" 2>/dev/null \
@@ -495,7 +496,7 @@ ${BOLD}COMMANDS${RESET}
   ${CYAN}doctor${RESET}          Shareable org-vitals card ("fastfetch for your org")
   ${CYAN}bar${RESET}             Waybar JSON: org + PROD/SANDBOX + API limit %
   ${CYAN}limits${RESET}          Full limit utilization table
-  ${CYAN}flows${RESET}           Errored / paused / waiting Flow interviews
+  ${CYAN}flows${RESET}           Errored / paused Flow interviews
   ${CYAN}changes${RESET}         Recent Setup Audit Trail entries
   ${CYAN}context${RESET}         Paste-ready incident bundle for an AI agent
   ${CYAN}orgs${RESET}            List sf-authed orgs (★ = pinned)

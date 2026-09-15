@@ -63,7 +63,7 @@ quiet, **SANDBOX is loud**, and the peak limit drives amber → red.
 | `bluechip doctor` | Shareable org-vitals card — *"fastfetch for your org"* |
 | `bluechip bar` | Waybar JSON: org + PROD/SANDBOX + peak limit % |
 | `bluechip limits` | Full limit-utilization table (amber/red) |
-| `bluechip flows` | Errored / paused / waiting Flow interviews *(best-effort)* |
+| `bluechip flows` | Errored / paused Flow interviews *(best-effort)* |
 | `bluechip changes` | Recent Setup Audit Trail — "what changed since Friday" |
 | `bluechip context` | Paste-ready incident bundle for Claude / Cursor / any agent |
 | `bluechip orgs` / `pin <alias\|->` | List sf-authed orgs; pin one for Bluechip |
@@ -97,7 +97,7 @@ activate) · element-level Flow replay console · OutboundSync data-hygiene atta
 ## Limitations (honest)
 
 - **Flow faults are best-effort.** Hard faults roll back and may not persist as `FlowInterview`
-  rows; Bluechip surfaces errored/paused/waiting interviews and points at `changes` for the rest.
+  rows; Bluechip surfaces errored/paused interviews and points at `changes` for the rest.
 - **You need what `sf` can see.** Some reads want *View Setup and Configuration* / *View Event Log
   Files*. If a query is denied, Bluechip says so rather than guessing.
 - Targets **bash 5 / Linux** (Omarchy). Develops fine on macOS with the Salesforce CLI installed.
